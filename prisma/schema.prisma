@@ -1,0 +1,527 @@
+// ─────────────────────────────────────────────────────────────
+// PROFORMA · schema.prisma
+//
+// REGLAS DE INFRAESTRUCTURA (ver CLAUDE.md):
+//  • NUNCA `prisma migrate` ni `db push` (Supabase). La estructura se
+//    aplica con SQL en el dashboard. Como consecuencia, Prisma NO crea
+//    índices ni constraints: la fuente de verdad de índices/CHECKs es
+//    `sql/01_indexes.sql`.
+//  • Los atributos @unique / @@unique / @@index de acá son DOCUMENTACIÓN
+//    e informan al client. En la DB, todo unique de tabla con soft delete
+//    se implementa como índice ÚNICO PARCIAL (WHERE "deletedAt" IS NULL).
+//  • Soft delete en todo (`deletedAt`), salvo dos excepciones: AuditLog
+//    (inmutable) y Attendance (resumen derivado: se recalcula y se pisa).
+//  • Plata en centavos como BigInt (nunca float). Fechas UTC (@db.Timestamptz);
+//    el "día de negocio" va como @db.Date (Buenos Aires), sin timezone.
+// ─────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// Prisma 7: `url` y `directUrl` ya NO van acá. La URL que usan los comandos
+// de CLI vive en prisma.config.ts; la del runtime se pasa por adapter al
+// constructor de PrismaClient.
+datasource db {
+  provider = "postgresql"
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AUTH (Better Auth)
+// User/Session/Account/Verification son de Better Auth. Los modelos salieron
+// de `@better-auth/cli generate` (fuente de verdad) y se adaptaron a las
+// convenciones del proyecto: timestamps @db.Timestamptz, `role` como enum
+// UserRole en vez de String.
+//
+// REGLA: estas 4 tablas NO llevan soft delete y NO entran en la política de
+// ON DELETE RESTRICT. Better Auth borra de verdad (logout, expiración,
+// revocación), así que los FK de Session/Account a User van en CASCADE, tal
+// como los genera Better Auth. Ver sql/03_better_auth.sql.
+// ═══════════════════════════════════════════════════════════════
+
+enum UserRole {
+  ADMIN
+  SUPERVISOR
+  EMPLOYEE
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique // sin soft delete → unique total
+  name          String?
+  emailVerified Boolean  @default(false)
+  image         String? // avatar (Better Auth / OAuth)
+  // Campo adicional de Better Auth. En la DB es el enum UserRole; Better Auth
+  // lo ve como string y Postgres acepta el literal del enum.
+  role          UserRole @default(EMPLOYEE)
+  createdAt     DateTime @default(now()) @db.Timestamptz
+  updatedAt     DateTime @updatedAt @db.Timestamptz
+
+  // Relaciones de Better Auth
+  sessions Session[]
+  accounts Account[]
+
+  // Relaciones del dominio
+  employee          Employee? // login opcionalmente ligado a un empleado
+  auditLogs         AuditLog[]
+  editedTimeEntries TimeEntry[] @relation("TimeEntryEditor")
+
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  token     String   @unique
+  expiresAt DateTime @db.Timestamptz
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime? @db.Timestamptz
+  refreshTokenExpiresAt DateTime? @db.Timestamptz
+  scope                 String?
+  password              String? // hash de credencial (email+password)
+  createdAt             DateTime  @default(now()) @db.Timestamptz
+  updatedAt             DateTime  @updatedAt @db.Timestamptz
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime @db.Timestamptz
+  createdAt  DateTime @default(now()) @db.Timestamptz
+  updatedAt  DateTime @updatedAt @db.Timestamptz
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CATEGORÍAS Y PLANTILLA DE HORARIO
+// Una categoría (p.ej. "Técnico full-time") define una plantilla semanal
+// (CategoryDay). El horario EFECTIVO de cada empleado vive en WorkSchedule,
+// generado desde la categoría y con excepciones individuales permitidas.
+// ═══════════════════════════════════════════════════════════════
+
+model EmployeeCategory {
+  id          String  @id @default(cuid())
+  name        String // UNIQUE parcial en sql/01_indexes.sql
+  description String?
+
+  days      CategoryDay[]
+  employees Employee[]
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([deletedAt])
+  @@map("employee_category")
+}
+
+model CategoryDay {
+  id         String @id @default(cuid())
+  categoryId String
+
+  // 0 = domingo … 6 = sábado. Minutos desde 00:00 hora local Buenos Aires.
+  // endMinute <= startMinute => el turno cruza medianoche. Se permiten
+  // varios CategoryDay por (categoría, día) para turnos partidos.
+  dayOfWeek   Int
+  startMinute Int
+  endMinute   Int
+
+  category EmployeeCategory @relation(fields: [categoryId], references: [id])
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  // UNIQUE parcial (categoryId, dayOfWeek, startMinute) en sql/01_indexes.sql
+  @@index([categoryId])
+  @@map("category_day")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EMPLEADOS
+// ═══════════════════════════════════════════════════════════════
+
+enum EmploymentType {
+  MONTHLY   // sueldo mensual fijo
+  DAILY     // jornal diario
+  HOURLY    // por hora
+  PER_EVENT // freelance / cachet por evento
+}
+
+model Employee {
+  id             String         @id @default(cuid())
+  firstName      String
+  lastName       String
+  documentId     String // DNI/CUIL — UNIQUE parcial en sql/01_indexes.sql
+  email          String?
+  phone          String?
+  photoUrl       String?
+  position       String? // cargo general (sonido, iluminación, logística…)
+  employmentType EmploymentType @default(MONTHLY)
+  hireDate       DateTime?      @db.Date
+  active         Boolean        @default(true)
+
+  // Categoría (plantilla de horario) — opcional
+  categoryId String?
+  category   EmployeeCategory? @relation(fields: [categoryId], references: [id])
+
+  // Vínculo opcional con una cuenta de login (1:1).
+  // @unique requerido por la relación; en DB es índice parcial.
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id])
+
+  // Dominio
+  schedules   WorkSchedule[]
+  assignments EventAssignment[]
+  timeEntries TimeEntry[]
+  attendances Attendance[]
+  leaves      LeaveRequest[]
+
+  // ── PREVISTO (payroll, Fase 2): salaryHistory SalaryHistory[]  (sueldo en BigInt centavos)
+  // ── PREVISTO (payroll, Fase 2): payrollItems  PayrollItem[]
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([categoryId])
+  @@index([userId]) // cobertura de la FK: el @unique de arriba NO se crea en
+  // la DB (su versión es el índice parcial del 01, inutilizable por el
+  // chequeo de integridad referencial). Índice real en 01_indexes.sql.
+  @@index([active])
+  @@index([deletedAt])
+  @@map("employee")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HORARIO EFECTIVO POR EMPLEADO (versionado en el tiempo)
+// Generado desde la categoría; `isException` marca overrides manuales.
+// ═══════════════════════════════════════════════════════════════
+
+model WorkSchedule {
+  id         String @id @default(cuid())
+  employeeId String
+
+  // Misma convención que CategoryDay: 0=domingo, minutos locales BA.
+  dayOfWeek   Int
+  startMinute Int
+  endMinute   Int
+
+  // true = override manual respecto de la plantilla de la categoría.
+  isException Boolean @default(false)
+
+  // Vigencia: permite cambiar el horario sin perder historia.
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date // null = vigente
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  // UNIQUE parcial (employeeId, dayOfWeek, effectiveFrom, startMinute) en sql/01_indexes.sql
+  @@index([employeeId, dayOfWeek])
+  @@index([employeeId, effectiveFrom, effectiveTo])
+  @@map("work_schedule")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// EVENTOS
+// ═══════════════════════════════════════════════════════════════
+
+enum EventStatus {
+  DRAFT
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model Event {
+  id     String      @id @default(cuid())
+  name   String
+  client String?
+  venue  String?
+  status EventStatus @default(DRAFT)
+
+  // Instantes reales en UTC. Se muestran en America/Argentina/Buenos_Aires.
+  startAt DateTime @db.Timestamptz
+  endAt   DateTime @db.Timestamptz
+
+  assignments EventAssignment[]
+
+  // ── PREVISTO (finanzas, Fase 2): budgetCents BigInt? / income CashMovement[]
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([status])
+  @@index([startAt])
+  @@index([deletedAt])
+  @@map("event")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ASIGNACIONES (empleado ↔ evento, con turno)
+// ═══════════════════════════════════════════════════════════════
+
+enum AssignmentStatus {
+  PLANNED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+model EventAssignment {
+  id         String @id @default(cuid())
+  eventId    String
+  employeeId String
+
+  role         String? // rol en ESTE evento (puede diferir de position)
+  isSupervisor Boolean @default(false)
+
+  // Regla de negocio: el turno que cruza medianoche pertenece al día de
+  // INICIO. `workDate` es ese día (fecha pura) y es la clave con la que el
+  // dominio bucketea asistencia/ausencias.
+  workDate DateTime @db.Date
+
+  // Turno concreto en UTC (armado, desarmado 00:00–05:00, etc.)
+  startAt DateTime         @db.Timestamptz
+  endAt   DateTime         @db.Timestamptz
+  status  AssignmentStatus @default(PLANNED)
+
+  event      Event       @relation(fields: [eventId], references: [id])
+  employee   Employee    @relation(fields: [employeeId], references: [id])
+  timeEntries TimeEntry[]
+
+  // ── PREVISTO (payroll, Fase 2): cachetCents BigInt? / payrollItem PayrollItem?
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  // Varias asignaciones por día permitidas. UNIQUE parcial
+  // (eventId, employeeId, startAt) en sql/01_indexes.sql (evita duplicar el mismo turno).
+  @@index([employeeId, workDate]) // "¿tiene asignación este día?" (regla de ausencias)
+  @@index([eventId])
+  @@index([workDate])
+  @@map("event_assignment")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ASISTENCIA
+// TimeEntry  = fichadas reales (N por día, opcionalmente ligadas a un turno).
+// Attendance = resumen derivado del día (1 por empleado/día), lo produce
+//              el motor puro de src/lib/domain/.
+// ═══════════════════════════════════════════════════════════════
+
+enum TimeEntrySource {
+  MANUAL // cargado a mano por admin/supervisor
+  DEVICE // reloj / app de fichaje
+  IMPORT // importación
+}
+
+model TimeEntry {
+  id         String @id @default(cuid())
+  employeeId String
+
+  workDate DateTime  @db.Date // día de negocio al que imputa la fichada
+  checkIn  DateTime  @db.Timestamptz
+  checkOut DateTime? @db.Timestamptz // null = turno abierto
+
+  source TimeEntrySource @default(MANUAL)
+  notes  String?
+
+  // Ubicación de cada momento (se REGISTRA, no bloquea). Nullable + flag de
+  // permiso denegado: si no hay señal/GPS se ficha igual. Ver sql/06.
+  checkInLat             Float?
+  checkInLng             Float?
+  checkInAccuracy        Float?
+  checkInLocationDenied  Boolean @default(false)
+  checkOutLat            Float?
+  checkOutLng            Float?
+  checkOutAccuracy       Float?
+  checkOutLocationDenied Boolean @default(false)
+
+  // Turno al que corresponde la fichada (si vino de un evento).
+  assignmentId String?
+  assignment   EventAssignment? @relation(fields: [assignmentId], references: [id])
+
+  // Quién editó/cargó la fichada a mano (auditoría de correcciones).
+  editedById String?
+  editedBy   User?   @relation("TimeEntryEditor", fields: [editedById], references: [id])
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([employeeId, workDate])
+  @@index([assignmentId])
+  @@index([editedById]) // cobertura de FK. Índice real en 01_indexes.sql.
+  @@index([deletedAt])
+  @@map("time_entry")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  JUSTIFIED  // ausencia justificada a mano (source=MANUAL). El motor NO lo emite.
+  ON_LEAVE   // día cubierto por LeaveRequest aprobado
+  HOLIDAY
+  INCOMPLETE // fichó y nunca cerró la fichada (armado de madrugada)
+  UNVERIFIED // asignación sin fichada ni confirmación del supervisor. Bloquea payroll.
+  // Nuevos valores agregados en sql/04_attendance.sql (ALTER TYPE ADD VALUE).
+}
+
+enum AttendanceSource {
+  GENERATED // producido por el motor de asistencia (domain/)
+  MANUAL    // ajuste manual del admin
+}
+
+model Attendance {
+  id         String @id @default(cuid())
+  employeeId String
+
+  workDate        DateTime         @db.Date
+  status          AttendanceStatus
+  source          AttendanceSource @default(GENERATED)
+  workedMinutes   Int              @default(0) // derivado de TimeEntry
+  expectedMinutes Int? // derivado de WorkSchedule/asignaciones
+  notes           String?
+  // Anomalías que el motor detecta para que un humano reconcilie
+  // (fichadas solapadas, trabajo en feriado, licencia vs asignación, etc.).
+  // Columna text[] agregada en sql/04_attendance.sql.
+  warnings        String[]         @default([])
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+  // Sin deletedAt: es un resumen DERIVADO, no un hecho. Si está mal se
+  // recalcula y se pisa. Los hechos inmutables viven en TimeEntry.
+
+  // UNIQUE COMPLETO (no parcial): el cron nocturno del motor de ausencias
+  // necesita `upsert` atómico sobre esta clave. Sin el @@unique en el client
+  // quedaría findFirst + create/update = race condition bajo cron.
+  @@unique([employeeId, workDate])
+  @@index([workDate])
+  @@index([status])
+  @@map("attendance")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LICENCIAS / AUSENCIAS PLANIFICADAS (alimentan la generación)
+// ═══════════════════════════════════════════════════════════════
+
+enum LeaveType {
+  VACATION
+  SICK
+  UNPAID
+  SPECIAL
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model LeaveRequest {
+  id         String @id @default(cuid())
+  employeeId String
+
+  type     LeaveType
+  status   LeaveStatus @default(PENDING)
+  dateFrom DateTime    @db.Date
+  dateTo   DateTime    @db.Date
+  reason   String?
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([employeeId, dateFrom, dateTo])
+  @@index([status])
+  @@map("leave_request")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// AUDIT LOG (obligatorio en sueldos, asistencia y caja). Inmutable.
+// `domain` es String libre (no enum): "PAYROLL" | "ATTENDANCE" | "CASH" | …
+// ═══════════════════════════════════════════════════════════════
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  domain     String // "PAYROLL" | "ATTENDANCE" | "CASH" | …
+  action     String // "create" | "update" | "delete" | "adjust" | …
+  entityType String // p.ej. "Attendance", "SalaryHistory"
+  entityId   String
+
+  before Json?
+  after  Json?
+  reason String?
+
+  actorId String? // User que ejecutó la acción (null = sistema/cron)
+  actor   User?   @relation(fields: [actorId], references: [id])
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  // Sin deletedAt: inmutable, nunca se borra ni se edita.
+
+  @@index([domain, createdAt])
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@map("audit_log")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// FERIADOS
+// Tabla, NO lista calculada: en Argentina hay feriados trasladables y puentes
+// por decreto que cambian cada año. El motor de asistencia recibe un boolean
+// `isHoliday` ya resuelto; el caller lo consulta acá.
+// Datos de referencia: sin soft delete (como User.email/Attendance), unique
+// TOTAL de `date`. Se crea en sql/05_holidays.sql.
+// ═══════════════════════════════════════════════════════════════
+
+model Holiday {
+  id    String   @id @default(cuid())
+  date  DateTime @unique @db.Date // un feriado por fecha (unique total)
+  label String
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+  updatedAt DateTime @updatedAt @db.Timestamptz
+
+  @@map("holiday")
+}

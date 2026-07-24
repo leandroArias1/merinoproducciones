@@ -1,0 +1,8 @@
+# pnpm 10+ lee la aprobación de build scripts desde acá, no desde
+# package.json. Equivale a haber corrido `pnpm approve-builds`.
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  esbuild: true
+  prisma: true
+  sharp: true

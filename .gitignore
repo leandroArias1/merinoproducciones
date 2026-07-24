@@ -1,0 +1,26 @@
+# dependencias
+node_modules/
+.pnpm-store/
+
+# Prisma Client generado (se regenera con `prisma generate` en postinstall)
+src/generated/
+
+# next
+.next/
+out/
+build/
+
+# env
+.env
+.env*.local
+
+# varios
+.DS_Store
+*.log
+
+# next typescript autogenerado
+next-env.d.ts
+*.tsbuildinfo
+
+.env*
+!.env.example

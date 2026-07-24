@@ -1,0 +1,48 @@
+{
+  "name": "proforma",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "postinstall": "prisma generate",
+    "test": "vitest run --config vitest.config.ts --passWithNoTests",
+    "test:int": "vitest run --config vitest.int.config.ts",
+    "db:seed:dev": "tsx prisma/seed.dev.ts",
+    "db:seed:prod": "tsx prisma/seed.prod.ts",
+    "db:generate": "prisma generate",
+    "db:validate": "prisma validate",
+    "db:drift": "prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/luxon": "^3.7.2",
+    "@types/pg": "^8.20.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "prisma": "^7.9.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.4.0",
+    "@prisma/adapter-pg": "^7.9.0",
+    "@prisma/client": "^7.9.0",
+    "better-auth": "^1.6.24",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.26.0",
+    "luxon": "^3.7.2",
+    "next": "^15.5.21",
+    "pg": "^8.22.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-hook-form": "^7.82.0",
+    "tailwind-merge": "^3.6.0",
+    "zod": "^4.4.3"
+  }
+}
