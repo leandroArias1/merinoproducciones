@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 import { prisma } from '@/lib/db'
+import type { PrismaClient } from '@/generated/prisma/client'
 import { buildImportPreview, commitImport, parseCsv } from '@/lib/employees/import'
 import { createCategory } from '@/lib/employees/categories'
 import { createEmployee } from '@/lib/employees/employees'
@@ -110,5 +111,63 @@ describe('importador CSV', () => {
     const preview = await buildImportPreview(prisma, 'foo,bar\n1,2')
     expect(preview.headerError).toMatch(/Faltan columnas obligatorias/)
     expect(preview.rows).toHaveLength(0)
+  })
+
+  it('aplica las validaciones de DNI (numérico 7-8) y fecha no futura del alta manual', async () => {
+    const csv = [
+      'nombre,apellido,DNI,telefono,cargo,categoria,fecha de ingreso',
+      'Leti,Ras,ABC12345,,Cargo,,2026-03-01', // DNI con letras -> skip
+      'Cor,Ta,123456,,Cargo,,2026-03-01', // DNI de 6 dígitos -> skip
+      'Fu,Turo,40999888,,Cargo,,2999-01-01', // fecha futura -> skip
+      'Ok,Persona,40111000,,Cargo,,2026-03-01', // válida
+    ].join('\n')
+    const preview = await buildImportPreview(prisma, csv)
+    expect(preview.toCreate).toBe(1)
+    const reasons = preview.rows.filter((r) => r.status === 'skip').map((r) => r.reason ?? '')
+    expect(reasons.some((r) => /DNI inválido/.test(r))).toBe(true)
+    expect(reasons.some((r) => /futura/.test(r))).toBe(true)
+  })
+})
+
+// ── Bug #1 (rama import): lotes + todo-o-nada + error no silencioso ──
+
+/** N filas válidas; si `boomAt` se setea, esa fila lleva firstName 'BOOM'. */
+function validCsv(n: number, boomAt?: number): string {
+  const lines = ['nombre,apellido,DNI,telefono,cargo,categoria,fecha de ingreso']
+  for (let i = 1; i <= n; i++) {
+    const first = boomAt === i ? 'BOOM' : `Nom${i}`
+    lines.push(`${first},Ape${i},${40000000 + i},,Cargo,,2026-03-01`)
+  }
+  return lines.join('\n')
+}
+
+describe('importador CSV — volumen y atomicidad (bug #1)', () => {
+  it('30 filas válidas se crean todas (varios lotes, ninguna se pierde)', async () => {
+    const res = await commitImport(prisma, validCsv(30), ACTOR)
+    expect(res.created).toBe(30)
+    expect(await prisma.employee.count({ where: { deletedAt: null } })).toBe(30)
+  })
+
+  it('si una fila del medio rompe en el insert → NO queda a medio importar y el error se propaga', async () => {
+    // Extensión que simula un fallo de DB al crear la fila 'BOOM' (pasa el
+    // preview pero revienta en el insert, después de que un lote previo commiteó).
+    const boomDb = prisma.$extends({
+      query: {
+        employee: {
+          async create({ args, query }) {
+            if ((args.data as { firstName?: string }).firstName === 'BOOM') {
+              throw new Error('fallo simulado en insert')
+            }
+            return query(args)
+          },
+        },
+      },
+    }) as unknown as PrismaClient
+
+    // Fila 15 rompe → el lote 1 (1-10) ya commiteó y debe revertirse.
+    await expect(commitImport(boomDb, validCsv(30, 15), ACTOR)).rejects.toThrow(/revirtió por completo/)
+
+    // Todo o nada: no queda NINGÚN empleado activo.
+    expect(await prisma.employee.count({ where: { deletedAt: null } })).toBe(0)
   })
 })

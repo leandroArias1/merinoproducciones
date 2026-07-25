@@ -5,6 +5,17 @@ import { z } from 'zod'
  * la action). Un solo schema, no dos.
  */
 
+const BA_ZONE = 'America/Argentina/Buenos_Aires'
+
+/** Hoy en calendario Buenos Aires como 'YYYY-MM-DD' (sin dependencias). */
+export function todayInBA(): string {
+  // en-CA formatea como YYYY-MM-DD; con timeZone da el día de negocio real.
+  return new Intl.DateTimeFormat('en-CA', { timeZone: BA_ZONE }).format(new Date())
+}
+
+/** DNI/CUIL argentino: solo dígitos, 7 u 8. Reutilizable (form + importador CSV). */
+export const DOCUMENT_ID_RE = /^\d{7,8}$/
+
 // dayOfWeek 0=domingo..6=sábado. Minutos desde 00:00 hora BA.
 export const DAY_LABELS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'] as const
 
@@ -45,7 +56,10 @@ export type CategoryInput = z.infer<typeof categorySchema>
 export const employeeSchema = z.object({
   firstName: z.string().trim().min(1, 'Requerido').max(60),
   lastName: z.string().trim().min(1, 'Requerido').max(60),
-  documentId: z.string().trim().min(1, 'Requerido').max(20),
+  documentId: z
+    .string()
+    .trim()
+    .refine((v) => DOCUMENT_ID_RE.test(v), 'El DNI debe ser numérico, de 7 u 8 dígitos.'),
   email: z
     .string()
     .trim()
@@ -59,6 +73,7 @@ export const employeeSchema = z.object({
   hireDate: z
     .string()
     .refine((v) => v === '' || /^\d{4}-\d{2}-\d{2}$/.test(v), 'Fecha inválida')
+    .refine((v) => v === '' || v <= todayInBA(), 'La fecha de ingreso no puede ser futura.')
     .optional()
     .default(''),
   categoryId: z.string().optional().default(''),

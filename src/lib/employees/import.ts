@@ -3,9 +3,17 @@ import { Prisma } from '@/generated/prisma/client'
 import type { PrismaClient } from '@/generated/prisma/client'
 import { ActionError } from '@/lib/auth/action'
 import type { EmployeeInput } from './schema'
-import { insertEmployeeTx } from './employees'
+import { DOCUMENT_ID_RE, todayInBA } from './schema'
+import { insertEmployeeTx, softDeleteEmployee } from './employees'
 
 type Db = PrismaClient
+
+// Bug #1 (rama import): NO se meten las N filas en una sola transacción gigante
+// (>5s sobre el pooler -> timeout -> 0 creados en silencio). Se insertan en
+// lotes chicos, cada uno su transacción acotada. La atomicidad "todo o nada" se
+// mantiene a nivel USUARIO con rollback compensatorio (ver commitImport).
+const IMPORT_CHUNK_SIZE = 10
+const IMPORT_TX_TIMEOUT_MS = 20_000
 
 /**
  * Importador CSV de empleados. Dos fases:
@@ -180,6 +188,10 @@ async function classify(db: Db, csvText: string): Promise<{ headerError?: string
     if (!values.firstName || !values.lastName || !values.documentId) {
       return skip('Faltan campos obligatorios (nombre, apellido o DNI).')
     }
+    // DNI: mismas reglas que el alta manual (numérico, 7-8 dígitos).
+    if (!DOCUMENT_ID_RE.test(values.documentId)) {
+      return skip(`DNI inválido (debe ser numérico de 7 u 8 dígitos): "${values.documentId}".`)
+    }
     // Categoría: vacía = sin categoría; con nombre = tiene que existir.
     let categoryId = ''
     if (values.category) {
@@ -189,6 +201,7 @@ async function classify(db: Db, csvText: string): Promise<{ headerError?: string
     }
     const hireDate = parseHireDate(values.hireDate)
     if (hireDate === null) return skip(`Fecha de ingreso inválida: "${values.hireDate}".`)
+    if (hireDate !== '' && hireDate > todayInBA()) return skip(`Fecha de ingreso futura: "${values.hireDate}".`)
 
     if (takenDni.has(values.documentId)) return skip(`DNI ya registrado en un empleado activo: ${values.documentId}.`)
     if (seenInFile.has(values.documentId)) return skip(`DNI repetido dentro del archivo: ${values.documentId}.`)
@@ -228,7 +241,29 @@ export interface ImportResult {
   skipped: number
 }
 
-/** Crea las filas válidas en UNA transacción (todo o nada). Auditado. */
+/**
+ * Rollback compensatorio de un import que falló a mitad: soft-deletea (regla del
+ * proyecto: nunca hard delete) los empleados YA commiteados de lotes previos.
+ * Devuelve los IDs que NO se pudieron revertir (para avisar, nunca en silencio).
+ */
+async function rollbackImport(db: Db, ids: string[], actorId: string): Promise<string[]> {
+  const failed: string[] = []
+  for (const id of ids) {
+    try {
+      await softDeleteEmployee(db, id, actorId)
+    } catch {
+      failed.push(id)
+    }
+  }
+  return failed
+}
+
+/**
+ * Crea las filas válidas en LOTES CHICOS (no una transacción gigante: era el
+ * bug #1). Semántica "todo o nada" a nivel usuario: si un lote falla, se revierte
+ * TODO lo ya insertado y se lanza un error CLARO — nunca un fallo silencioso.
+ * Auditado.
+ */
 export async function commitImport(db: Db, csvText: string, actorId: string): Promise<ImportResult> {
   const { headerError, rows } = await classify(db, csvText)
   if (headerError) throw new ActionError('VALIDATION', headerError)
@@ -236,22 +271,53 @@ export async function commitImport(db: Db, csvText: string, actorId: string): Pr
   const toCreate = rows.filter((r) => r.status === 'create' && r.input)
   if (toCreate.length === 0) throw new ActionError('VALIDATION', 'No hay filas válidas para importar.')
 
-  await db.$transaction(async (tx) => {
-    for (const row of toCreate) {
-      const id = await insertEmployeeTx(tx, row.input as EmployeeInput, actorId)
-      await tx.auditLog.create({
-        data: {
-          domain: 'EMPLOYEE',
-          action: 'import',
-          entityType: 'Employee',
-          entityId: id,
-          before: Prisma.DbNull,
-          after: { source: 'csv-import', documentId: (row.input as EmployeeInput).documentId } as Prisma.InputJsonValue,
-          actorId,
+  const committedIds: string[] = []
+  try {
+    for (let i = 0; i < toCreate.length; i += IMPORT_CHUNK_SIZE) {
+      const chunk = toCreate.slice(i, i + IMPORT_CHUNK_SIZE)
+      // Los IDs del lote se juntan aparte y solo se dan por buenos DESPUÉS del
+      // commit: si el lote falla, su transacción revierte y estos se descartan.
+      const chunkIds: string[] = []
+      await db.$transaction(
+        async (tx) => {
+          for (const row of chunk) {
+            const input = row.input as EmployeeInput
+            const id = await insertEmployeeTx(tx, input, actorId)
+            await tx.auditLog.create({
+              data: {
+                domain: 'EMPLOYEE',
+                action: 'import',
+                entityType: 'Employee',
+                entityId: id,
+                before: Prisma.DbNull,
+                after: { source: 'csv-import', documentId: input.documentId } as Prisma.InputJsonValue,
+                actorId,
+              },
+            })
+            chunkIds.push(id)
+          }
         },
-      })
+        { maxWait: IMPORT_TX_TIMEOUT_MS, timeout: IMPORT_TX_TIMEOUT_MS },
+      )
+      committedIds.push(...chunkIds)
     }
-  })
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    const failed = await rollbackImport(db, committedIds, actorId)
+    if (failed.length > 0) {
+      throw new ActionError(
+        'CONFLICT',
+        `La importación falló y NO se pudo revertir por completo. ` +
+          `Quedaron ${failed.length} empleado(s) para limpiar a mano (IDs: ${failed.join(', ')}). ` +
+          `Error original: ${detail}`,
+      )
+    }
+    throw new ActionError(
+      'CONFLICT',
+      `La importación falló y se revirtió por completo (0 empleados creados). ` +
+        `Revisá el CSV y reintentá. Detalle: ${detail}`,
+    )
+  }
 
   return { created: toCreate.length, skipped: rows.length - toCreate.length }
 }
