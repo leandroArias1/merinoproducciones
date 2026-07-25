@@ -148,6 +148,23 @@ existe en el schema de Prisma** (son objetos de DB puros), así que el diff no l
 ve y el baseline no cambia. Si el diff empezara a proponer DROP de esos índices o
 la función, es que alguien tocó el schema para intentar representarlos.
 
+## Caja / Finanzas (sql/09) — NO agrega drift
+
+`sql/09_finance.sql` crea 3 tablas (`party`, `expense`, `cash_movement`) + 5 enums
+y suma `event.agreedCents` / `event.clientId`. **El baseline sigue en los mismos 7
+statements.**
+
+Detalle clave: las 5 FK nuevas son OPCIONALES pero se declararon con
+`onDelete: Restrict` **EXPLÍCITO** en el schema (a diferencia de
+`employee.categoryId` / `time_entry.assignmentId`, que quedaron con el default y
+por eso drift-ean). Con el `onDelete` explícito, el diff emite `RESTRICT`, el
+schema dice `RESTRICT`, y **coinciden → no hay drift**. Este es el patrón a usar
+de acá en adelante para FK opcionales que queremos en RESTRICT.
+
+Lo que el diff NO ve (a propósito): el índice único PARCIAL
+`party_name_kind_active_uq` (no es `@@unique` en el schema) y los 3 CHECK de
+montos (`migrate diff` ignora los CHECK).
+
 ---
 
 ## Lo que NO aparece en el diff (y no es que falte)

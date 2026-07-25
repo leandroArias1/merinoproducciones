@@ -44,6 +44,7 @@ sql/05_holidays.sql        # tabla holiday
 sql/06_timeentry_location.sql  # columnas de ubicación en time_entry
 sql/07_payroll.sql         # LIQUIDACIONES: salary_history, payroll_config/period/item/line
 sql/08_search_unaccent.sql # extensión unaccent + pg_trgm + índices del buscador
+sql/09_finance.sql         # CAJA/FINANZAS: party, expense, cash_movement + Event.agreedCents/clientId
 ```
 
 Cada archivo va entre `BEGIN;` / `COMMIT;`.
@@ -59,10 +60,15 @@ Cada archivo va entre `BEGIN;` / `COMMIT;`.
 > si el `08` no está aplicado, la búsqueda de empleados tira error.** Supabase trae
 > las dos extensiones; se crean con `CREATE EXTENSION IF NOT EXISTS`.
 
-> ⚠️ **ORDEN CON EL DEPLOY (Fase 2):** aplicá `07` y `08` en Supabase **ANTES** de
-> deployar el código de payroll. Si el deploy llega primero, `/admin/liquidaciones`
-> y el buscador de `/admin/empleados` tiran error (tablas/función faltantes). El
-> resto de la app sigue andando.
+> **`sql/09_finance.sql` (Fase 3):** crea `party`, `expense`, `cash_movement` +
+> 5 enums y suma `event.agreedCents` / `event.clientId`. Los `ON DELETE` salen
+> RESTRICT del diff (declarado explícito en el schema) → **no agrega drift**.
+
+> ⚠️ **ORDEN CON EL DEPLOY (Fase 2 y 3):** aplicá `07`/`08` (payroll+buscador) y
+> `09` (caja) en Supabase **ANTES** de deployar el código que los usa. Si el deploy
+> llega primero, las páginas nuevas (`/admin/liquidaciones`, `/admin/caja`) y el
+> buscador de `/admin/empleados` tiran error (tablas/función faltantes). El resto
+> de la app sigue andando.
 
 > ⚠️ **Después de `02_timezone.sql`: RECONECTAR.** El `ALTER DATABASE SET
 > timezone` solo aplica a **sesiones nuevas**. La sesión del SQL Editor que ya
@@ -172,8 +178,8 @@ volvé a verificar con `pnpm db:drift`. NUNCA edites un archivo `sql/` viejo.
 ## 7. Checklist previo a producción
 
 - [ ] Todas las variables de la sección 1 seteadas en Vercel.
-- [ ] SQL `00`→`08` aplicados en orden; reconectado tras el `02`. (Fase 2:
-      `07` y `08` van ANTES del deploy de payroll.)
+- [ ] SQL `00`→`09` aplicados en orden; reconectado tras el `02`. (Fase 2/3:
+      `07`/`08`/`09` van ANTES del deploy que los usa.)
 - [ ] `SHOW timezone;` devuelve `UTC`.
 - [ ] `pnpm db:drift` coincide con `sql/EXPECTED_DRIFT.md`.
 - [ ] `pnpm db:seed:prod` corrido; admin logueado y password cambiada.

@@ -1,0 +1,121 @@
+import Link from 'next/link'
+import { HandCoins, ReceiptText, TrendingUp, Settings } from 'lucide-react'
+import { prisma } from '@/lib/db'
+import { cashBalance } from '@/lib/finance/profit'
+import { listMovements } from '@/lib/finance/queries'
+import { listParties } from '@/lib/finance/party'
+import { formatPesos } from '@/lib/payroll/format'
+import { NewExpenseForm } from '@/components/finance/new-expense-form'
+import { FinanceActionButton } from '@/components/finance/finance-action-button'
+import { FilterForm } from '@/components/shell/filter-form'
+import { Button } from '@/components/ui/button'
+
+const CAT_LABELS: Record<string, string> = {
+  CLIENT_PAYMENT: 'Cobro cliente',
+  EXPENSE_PAYMENT: 'Pago gasto',
+  SALARY: 'Sueldos',
+  OTHER: 'Otro',
+}
+function fmtDate(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+
+export default async function CajaPage({ searchParams }: { searchParams: Promise<{ desde?: string; hasta?: string; tipo?: string }> }) {
+  const sp = await searchParams
+  const direction = sp.tipo === 'INCOME' || sp.tipo === 'EXPENSE' ? sp.tipo : undefined
+  const [saldo, movements, providers, events] = await Promise.all([
+    cashBalance(prisma),
+    listMovements(prisma, { fromKey: sp.desde, toKey: sp.hasta, direction }),
+    listParties(prisma, 'PROVIDER'),
+    prisma.event.findMany({ where: { deletedAt: null }, orderBy: { startAt: 'desc' }, select: { id: true, name: true } }),
+  ])
+
+  return (
+    <div>
+      <header className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b pb-4">
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">Caja</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Ingresos, egresos y saldo.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href="/admin/caja/cobrar"><Button variant="secondary" size="sm"><HandCoins /> Por cobrar</Button></Link>
+          <Link href="/admin/caja/pagar"><Button variant="secondary" size="sm"><ReceiptText /> Por pagar</Button></Link>
+          <Link href="/admin/caja/rentabilidad"><Button variant="secondary" size="sm"><TrendingUp /> Rentabilidad</Button></Link>
+          <Link href="/admin/caja/config"><Button variant="secondary" size="sm"><Settings /> Config</Button></Link>
+        </div>
+      </header>
+
+      <div className="mb-6 rounded-lg border bg-secondary/40 px-5 py-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Saldo actual de caja</p>
+        <p className={`mt-1 text-3xl font-bold tabular-nums ${saldo < 0n ? 'text-destructive' : ''}`}>{formatPesos(saldo)}</p>
+      </div>
+
+      <div className="mb-6">
+        <NewExpenseForm providers={providers} events={events} />
+      </div>
+
+      <FilterForm className="mb-4 flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Desde</label>
+          <input type="date" name="desde" defaultValue={sp.desde} className="h-9 rounded-md border bg-background px-3 text-sm" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Hasta</label>
+          <input type="date" name="hasta" defaultValue={sp.hasta} className="h-9 rounded-md border bg-background px-3 text-sm" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Tipo</label>
+          <select name="tipo" defaultValue={direction ?? ''} className="h-9 rounded-md border bg-background px-3 text-sm">
+            <option value="">Todos</option>
+            <option value="INCOME">Ingresos</option>
+            <option value="EXPENSE">Egresos</option>
+          </select>
+        </div>
+        <Button type="submit" variant="secondary" size="sm">Filtrar</Button>
+      </FilterForm>
+
+      {movements.length === 0 ? (
+        <div className="grid place-items-center rounded-lg border border-dashed py-16 text-center text-sm text-muted-foreground">Sin movimientos.</div>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[640px] text-sm">
+            <thead className="bg-secondary text-left text-xs uppercase tracking-wide text-muted-foreground">
+              <tr>
+                <th className="px-4 py-2.5 font-medium">Fecha</th>
+                <th className="px-4 py-2.5 font-medium">Concepto</th>
+                <th className="px-4 py-2.5 font-medium">Tipo</th>
+                <th className="px-4 py-2.5 text-right font-medium">Monto</th>
+                <th className="px-4 py-2.5" />
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {movements.map((m) => (
+                <tr key={m.id} className="hover:bg-secondary/50">
+                  <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{fmtDate(m.occurredOn)}</td>
+                  <td className="px-4 py-2.5">
+                    {m.concept}
+                    <span className="ml-2 text-xs text-muted-foreground">{CAT_LABELS[m.category] ?? m.category}</span>
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {m.direction === 'INCOME' ? (
+                      <span className="text-xs font-medium text-[var(--success)]">Ingreso</span>
+                    ) : (
+                      <span className="text-xs font-medium text-destructive">Egreso</span>
+                    )}
+                  </td>
+                  <td className={`px-4 py-2.5 text-right font-semibold tabular-nums ${m.direction === 'EXPENSE' ? 'text-destructive' : ''}`}>
+                    {m.direction === 'EXPENSE' ? '−' : '+'}
+                    {formatPesos(m.amountCents)}
+                  </td>
+                  <td className="px-4 py-2.5 text-right">
+                    <FinanceActionButton kind="delete-movement" id={m.id} label="Anular" variant="ghost" confirm="¿Anular este movimiento? Es plata: afecta el saldo y, si pagaba un gasto, ese gasto vuelve a deber." />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
