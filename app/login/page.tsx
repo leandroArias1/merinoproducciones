@@ -31,7 +31,7 @@ export default function LoginPage() {
     <main className="grid min-h-[100dvh] place-items-center bg-secondary px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8">
-          <p className="text-xs font-semibold uppercase tracking-wider text-primary">Proforma</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-primary">Merino Producciones</p>
           <h1 className="mt-1 text-xl font-semibold text-foreground">Ingresá a tu cuenta</h1>
         </div>
 

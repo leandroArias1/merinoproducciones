@@ -21,7 +21,7 @@ const NAV = [
 function Brand() {
   return (
     <span className="text-sm font-semibold tracking-tight">
-      PRO<span className="text-primary">FORMA</span>
+      Merino <span className="text-primary">Producciones</span>
     </span>
   )
 }

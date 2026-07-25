@@ -21,7 +21,10 @@ export default async function ReciboPage({ params }: { params: Promise<{ itemId:
 
       <div className="rounded-lg border p-6">
         <header className="mb-5 border-b pb-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recibo de sueldo</p>
+          <p className="text-sm font-semibold">
+            Merino <span className="text-primary">Producciones</span>
+          </p>
+          <p className="mt-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recibo de sueldo</p>
           <h1 className="mt-1 text-lg font-semibold">{r.employeeName}</h1>
           <p className="text-sm text-muted-foreground">
             DNI {r.documentId} · <span className="capitalize">{monthLabel(r.year, r.month)}</span>

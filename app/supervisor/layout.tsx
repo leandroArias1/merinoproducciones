@@ -10,7 +10,7 @@ export default async function SupervisorLayout({ children }: { children: React.R
     <div className="mx-auto flex min-h-[100dvh] max-w-2xl flex-col">
       <header className="flex h-12 items-center justify-between border-b px-4">
         <span className="text-sm font-semibold tracking-tight">
-          PRO<span className="text-primary">FORMA</span>
+          Merino <span className="text-primary">Producciones</span>
           <span className="ml-2 text-xs font-normal text-muted-foreground">Supervisor</span>
         </span>
         <div className="flex items-center gap-3">

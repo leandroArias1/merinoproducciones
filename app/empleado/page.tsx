@@ -41,7 +41,7 @@ export default async function EmpleadoPage() {
     <main className="mx-auto flex min-h-[100dvh] max-w-md flex-col px-5 pb-8 pt-6">
       <div className="flex items-center justify-between">
         <span className="text-sm font-semibold tracking-tight">
-          PRO<span className="text-primary">FORMA</span>
+          Merino <span className="text-primary">Producciones</span>
         </span>
         <LogoutButton />
       </div>
