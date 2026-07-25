@@ -23,7 +23,7 @@ export default async function LiquidacionesPage() {
     <div>
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b pb-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Liquidaciones</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Sueldos</h1>
           <p className="mt-1 text-sm text-muted-foreground">Sueldos mensuales y recibos.</p>
         </div>
         <div className="flex items-center gap-2">

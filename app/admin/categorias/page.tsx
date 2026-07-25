@@ -13,7 +13,7 @@ export default async function CategoriasPage() {
     <div>
       <header className="mb-6 flex items-end justify-between border-b pb-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Categorías</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Horarios</h1>
           <p className="mt-1 text-sm text-muted-foreground">Plantillas de horario del personal.</p>
         </div>
         <Link href="/admin/categorias/nueva">

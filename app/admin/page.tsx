@@ -13,8 +13,8 @@ export default async function DashboardPage() {
   return (
     <div>
       <header className="mb-6 border-b pb-4">
-        <h1 className="text-xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Resumen operativo.</p>
+        <h1 className="text-xl font-semibold tracking-tight">Hoy</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Lo que hay que resolver hoy.</p>
       </header>
 
       <div className="grid gap-4 sm:grid-cols-3">

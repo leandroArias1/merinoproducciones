@@ -19,7 +19,7 @@ export default async function AumentosPage() {
         <h1 className="text-xl font-semibold tracking-tight">Aumentos</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           <Link href="/admin/liquidaciones" className="hover:text-primary">
-            ← Liquidaciones
+            ← Sueldos
           </Link>{' '}
           · Seleccioná empleados y aplicá el nuevo sueldo mensual. Cada uno versiona su historial (auditado).
         </p>

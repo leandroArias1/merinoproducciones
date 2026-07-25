@@ -41,7 +41,7 @@ export default async function PeriodoPage({ params }: { params: Promise<{ year: 
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
             <Link href="/admin/liquidaciones" className="hover:text-primary">
-              ← Liquidaciones
+              ← Sueldos
             </Link>
           </p>
         </div>
