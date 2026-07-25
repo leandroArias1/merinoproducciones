@@ -8,6 +8,8 @@ import { createEmployee, updateEmployee, softDeleteEmployee } from '@/lib/employ
 import { buildImportPreview, commitImport, type ImportPreview, type ImportResult } from '@/lib/employees/import'
 import { grantAccess, setUserRole, resetPassword, disableAccess } from '@/lib/users/access'
 import type { AppRole } from '@/lib/auth/access'
+import { generateBajaItem } from '@/lib/payroll/close'
+import { todayKeyBA, workDateFromKey } from '@/lib/attendance/timezone'
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string }
 
@@ -47,6 +49,14 @@ export const updateEmployeeAction = action(
 export const deleteEmployeeAction = action(['ADMIN'], async (ctx, id: string): Promise<ActionResult> => {
   try {
     await softDeleteEmployee(prisma, id, ctx.actorId)
+    // Baja a mitad de mes: se genera y cierra su liquidación proporcional AHORA
+    // (cobra en el momento). Best-effort: la baja ya está hecha; si esto falla,
+    // el cierre de fin de mes lo levanta igual (el roster incluye al dado de baja).
+    try {
+      await generateBajaItem(prisma, id, workDateFromKey(todayKeyBA(new Date())), ctx.actorId)
+    } catch (bajaErr) {
+      console.error('generateBajaItem falló (la baja se hizo igual):', bajaErr)
+    }
     revalidatePath('/admin/empleados')
     return { ok: true }
   } catch (e) {

@@ -215,19 +215,30 @@ export interface ListEmployeesParams {
 export async function listEmployees(db: Db, params: ListEmployeesParams) {
   const { page, pageSize, categoryId, status = 'all', search } = params
   const q = search?.trim()
+
+  // Búsqueda acento-INSENSIBLE (sql/08): resuelvo los IDs que matchean con
+  // f_unaccent() por SQL crudo (usa los índices trigram) y los combino con los
+  // filtros de Prisma. Así "benitez" matchea "Benítez".
+  let searchFilter = {}
+  if (q) {
+    const like = `%${q}%`
+    const matched = await db.$queryRaw<{ id: string }[]>`
+      SELECT id FROM employee
+      WHERE "deletedAt" IS NULL
+        AND ( f_unaccent("firstName") ILIKE f_unaccent(${like})
+           OR f_unaccent("lastName")  ILIKE f_unaccent(${like})
+           OR "documentId" ILIKE ${like} )
+    `
+    const ids = matched.map((r) => r.id)
+    if (ids.length === 0) return { rows: [], total: 0, page, pageSize }
+    searchFilter = { id: { in: ids } }
+  }
+
   const where = {
     deletedAt: null, // siempre: las bajas no aparecen
     ...(categoryId ? { categoryId } : {}),
     ...(status === 'active' ? { active: true } : status === 'inactive' ? { active: false } : {}),
-    ...(q
-      ? {
-          OR: [
-            { firstName: { contains: q, mode: 'insensitive' as const } },
-            { lastName: { contains: q, mode: 'insensitive' as const } },
-            { documentId: { contains: q } },
-          ],
-        }
-      : {}),
+    ...searchFilter,
   }
   const [total, rows] = await Promise.all([
     db.employee.count({ where }),

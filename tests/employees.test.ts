@@ -206,10 +206,9 @@ describe('listEmployees: búsqueda por nombre/DNI (server-side)', () => {
     await createEmployee(prisma, emp({ firstName: 'Nahuel', lastName: 'Benítez', documentId: '30222333' }), ACTOR)
   })
 
-  it('filtra por apellido (case-insensitive)', async () => {
-    // Substring case-insensitive (ILIKE). Nota: acento-sensible ('ben' matchea
-    // 'Benítez' pero 'benitez' no; folding de acentos quedaría para unaccent).
-    const { rows } = await listEmployees(prisma, { page: 1, pageSize: 10, search: 'BEN' })
+  it('filtra por apellido acento-INSENSIBLE (unaccent, sql/08)', async () => {
+    // "benitez" sin acento matchea "Benítez" (f_unaccent). Antes fallaba.
+    const { rows } = await listEmployees(prisma, { page: 1, pageSize: 10, search: 'benitez' })
     expect(rows).toHaveLength(1)
     expect(rows[0].lastName).toBe('Benítez')
   })
