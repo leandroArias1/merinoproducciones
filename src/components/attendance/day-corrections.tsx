@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { RefreshCw, ShieldCheck, Pencil, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -26,7 +25,6 @@ export function DayCorrections({
   workDateKey: string
   entries: EntryEdit[]
 }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [open, setOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -39,7 +37,6 @@ export function DayCorrections({
     startTransition(async () => {
       const res = await fn()
       if (!res.ok) return setError(res.error ?? 'Error')
-      router.refresh()
     })
   }
 

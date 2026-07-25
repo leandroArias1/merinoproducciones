@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { KeyRound, ShieldCheck, ShieldOff, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { AppRole } from '@/lib/auth/access'
@@ -39,7 +38,6 @@ export function EmployeeAccessPanel({
   employeeEmail: string | null
   access: EmployeeAccess
 }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   // Contraseña recién definida/generada: se muestra UNA vez tras el éxito.
@@ -61,7 +59,6 @@ export function EmployeeAccessPanel({
       const res = await fn()
       if (!res.ok) return setError(res.error ?? 'Error.')
       onOk?.()
-      router.refresh()
     })
   }
 

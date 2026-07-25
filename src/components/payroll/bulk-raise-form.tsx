@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { bulkRaiseAction } from '~/app/admin/liquidaciones/actions'
 
@@ -13,7 +12,6 @@ export interface RaiseEmployeeVM {
 }
 
 export function BulkRaiseForm({ employees }: { employees: RaiseEmployeeVM[] }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [pesos, setPesos] = useState('')
@@ -43,7 +41,6 @@ export function BulkRaiseForm({ employees }: { employees: RaiseEmployeeVM[] }) {
       setDone({ count: selected.size, pesos: monto })
       setSelected(new Set())
       setPesos('')
-      router.refresh()
     })
   }
 

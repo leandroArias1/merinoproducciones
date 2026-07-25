@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { payExpenseAction, deleteMovementAction, deleteExpenseAction } from '~/app/admin/caja/actions'
 
@@ -26,7 +25,6 @@ export function FinanceActionButton({
   confirm: string
   variant?: 'secondary' | 'ghost'
 }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -36,7 +34,6 @@ export function FinanceActionButton({
     startTransition(async () => {
       const res = await RUN[kind](id)
       if (!res.ok) return setError(res.error ?? 'Error.')
-      router.refresh()
     })
   }
 

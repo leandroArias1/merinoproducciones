@@ -1,14 +1,12 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { Fingerprint, LogOut } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { clockInAction, clockOutAction } from '~/app/empleado/actions'
 import { getBrowserLocation } from './geo'
 
 export function FicharButton({ nextAction }: { nextAction: 'entrada' | 'salida' }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -18,7 +16,6 @@ export function FicharButton({ nextAction }: { nextAction: 'entrada' | 'salida' 
       const location = await getBrowserLocation()
       const res = nextAction === 'entrada' ? await clockInAction(location) : await clockOutAction(location)
       if (!res.ok) return setError(res.error)
-      router.refresh()
     })
   }
 

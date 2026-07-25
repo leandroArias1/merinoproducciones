@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { ASSIGNMENT_STATUSES, ASSIGNMENT_STATUS_LABELS, type AssignmentStatus } from '@/lib/events/schema'
 import { setMyAssignmentStatusAction } from '~/app/supervisor/eventos/actions'
 
@@ -14,7 +13,6 @@ export function SupervisorAssignmentControls({
   eventId: string
   status: string
 }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -23,7 +21,6 @@ export function SupervisorAssignmentControls({
     startTransition(async () => {
       const res = await setMyAssignmentStatusAction(assignmentId, next, eventId)
       if (!res.ok) return setError(res.error)
-      router.refresh()
     })
   }
 

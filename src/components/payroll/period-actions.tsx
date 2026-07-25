@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { Lock, BadgeCheck, Unlock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { closePeriodAction, payPeriodAction, reopenPeriodAction } from '~/app/admin/liquidaciones/actions'
@@ -9,7 +8,6 @@ import { closePeriodAction, payPeriodAction, reopenPeriodAction } from '~/app/ad
 type Status = 'OPEN' | 'CLOSED' | 'PAID' | 'NONE'
 
 export function PeriodActions({ year, month, status, canClose }: { year: number; month: number; status: Status; canClose: boolean }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -19,7 +17,6 @@ export function PeriodActions({ year, month, status, canClose }: { year: number;
     startTransition(async () => {
       const res = await fn()
       if (!res.ok) return setError(res.error ?? 'Error.')
-      router.refresh()
     })
   }
 

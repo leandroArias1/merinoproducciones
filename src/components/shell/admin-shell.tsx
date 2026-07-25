@@ -35,6 +35,11 @@ function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () 
           <Link
             key={href}
             href={href}
+            // Sin prefetch: los 8 links están en viewport en desktop, así que
+            // Next ejecutaba las 8 páginas enteras (queries + sesión) al montar
+            // el shell. Medido: con 8 pedidos en paralelo cada uno pasa de ~1 s
+            // a 2,5-3,4 s por contención. La navegación sigue siendo cliente.
+            prefetch={false}
             onClick={onNavigate}
             className={cn(
               'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors [&_svg]:size-4 [&_svg]:shrink-0',

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { Clock, History } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { getBrowserLocation } from './geo'
@@ -17,7 +16,6 @@ export interface Member {
 }
 
 export function SupervisorFichajePanel({ eventId, members }: { eventId: string; members: Member[] }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [retroFor, setRetroFor] = useState<string | null>(null)
@@ -30,7 +28,6 @@ export function SupervisorFichajePanel({ eventId, members }: { eventId: string; 
       const loc = await getBrowserLocation()
       const res = await supervisorToggleClockAction(eventId, employeeId, loc)
       if (!res.ok) return setError(res.error)
-      router.refresh()
     })
   }
 
@@ -46,7 +43,6 @@ export function SupervisorFichajePanel({ eventId, members }: { eventId: string; 
           break
         }
       }
-      router.refresh()
     })
   }
 
@@ -58,7 +54,6 @@ export function SupervisorFichajePanel({ eventId, members }: { eventId: string; 
       setRetroFor(null)
       setCheckIn('')
       setCheckOut('')
-      router.refresh()
     })
   }
 

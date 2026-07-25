@@ -1,13 +1,11 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { setDeductionAction } from '~/app/admin/caja/actions'
 
 /** Config del descuento por falta (versiona PayrollConfig). */
 export function ConfigForm({ currentPesos }: { currentPesos: number | null }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
@@ -24,7 +22,6 @@ export function ConfigForm({ currentPesos }: { currentPesos: number | null }) {
       const res = await setDeductionAction(monto)
       if (!res.ok) return setError(res.error ?? 'Error.')
       setDone(true)
-      router.refresh()
     })
   }
 

@@ -1,13 +1,11 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { registerClientPaymentAction } from '~/app/admin/caja/actions'
 
 /** Registrar un pago (parcial) de cliente para un evento. Inline en la fila. */
 export function PaymentForm({ eventId }: { eventId: string }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
@@ -24,7 +22,6 @@ export function PaymentForm({ eventId }: { eventId: string }) {
       if (!res.ok) return setError(res.error ?? 'Error.')
       setOpen(false)
       setPesos('')
-      router.refresh()
     })
   }
 

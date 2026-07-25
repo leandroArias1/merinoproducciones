@@ -42,7 +42,6 @@ export function ImportWizard() {
       if (!res.ok) return setError(res.error)
       setDone(res.result)
       setPreview(null)
-      router.refresh()
     })
   }
 

@@ -3,7 +3,6 @@
 import { useEffect, useState, useTransition } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useRouter } from 'next/navigation'
 import { AlertTriangle, CalendarCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { assignmentSchema, type AssignmentFormValues, ASSIGNMENT_ROLES } from '@/lib/events/schema'
@@ -31,7 +30,6 @@ export function AssignmentForm({
   initial?: AssignmentInitial
   onDone?: () => void
 }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<PreviewResult | null>(null)
@@ -76,7 +74,6 @@ export function AssignmentForm({
         : await createAssignmentAction(eventId, values)
       if (!res.ok) return setError(res.error)
       onDone?.()
-      router.refresh()
     })
   }
 

@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { StatusBadge, assignmentTone } from './status-badge'
@@ -29,21 +28,18 @@ export function AssignmentsPanel({
   employees: { id: string; name: string }[]
   assignments: AssignmentRow[]
 }) {
-  const router = useRouter()
   const [adding, setAdding] = useState(false)
   const [pending, startTransition] = useTransition()
 
   function changeStatus(id: string, status: AssignmentStatus) {
     startTransition(async () => {
       await setAssignmentStatusAction(id, status, eventId)
-      router.refresh()
     })
   }
   function remove(id: string) {
     if (!confirm('¿Quitar esta asignación?')) return
     startTransition(async () => {
       await deleteAssignmentAction(id, eventId)
-      router.refresh()
     })
   }
 

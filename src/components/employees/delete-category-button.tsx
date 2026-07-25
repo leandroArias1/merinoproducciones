@@ -1,12 +1,10 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { Trash2 } from 'lucide-react'
 import { deleteCategoryAction } from '~/app/admin/categorias/actions'
 
 export function DeleteCategoryButton({ id, name }: { id: string; name: string }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -19,7 +17,6 @@ export function DeleteCategoryButton({ id, name }: { id: string; name: string })
         setError(res.error)
         return
       }
-      router.refresh()
     })
   }
 

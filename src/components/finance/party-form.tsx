@@ -1,13 +1,11 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { createPartyAction } from '~/app/admin/caja/actions'
 
 /** Alta rápida de un cliente o proveedor. */
 export function PartyForm({ kind }: { kind: 'CLIENT' | 'PROVIDER' }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
@@ -23,7 +21,6 @@ export function PartyForm({ kind }: { kind: 'CLIENT' | 'PROVIDER' }) {
       if (!res.ok) return setError(res.error ?? 'Error.')
       setOpen(false)
       setName('')
-      router.refresh()
     })
   }
 

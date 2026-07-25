@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { setEventPriceAction } from '~/app/admin/caja/actions'
 
@@ -19,7 +18,6 @@ export function SetPriceForm({
   currentClientId?: string | null
   cta?: string
 }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
@@ -36,7 +34,6 @@ export function SetPriceForm({
       const res = await setEventPriceAction(eventId, monto, clientId || null)
       if (!res.ok) return setError(res.error ?? 'Error.')
       setOpen(false)
-      router.refresh()
     })
   }
 

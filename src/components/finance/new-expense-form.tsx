@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { registerExpenseAction } from '~/app/admin/caja/actions'
 
@@ -22,7 +21,6 @@ export function NewExpenseForm({
   providers: { id: string; name: string }[]
   events: { id: string; name: string }[]
 }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
@@ -56,7 +54,6 @@ export function NewExpenseForm({
       setProviderId('')
       setEventId('')
       setPayNow(false)
-      router.refresh()
     })
   }
 
