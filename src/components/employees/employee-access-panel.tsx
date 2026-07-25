@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { KeyRound, ShieldCheck, ShieldOff, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ConfirmButton } from '@/components/ui/confirm-dialog'
 import type { AppRole } from '@/lib/auth/access'
 import type { EmployeeAccess } from '@/lib/users/access'
 import {
@@ -148,18 +149,16 @@ export function EmployeeAccessPanel({
               <Button size="sm" variant="secondary" disabled={pending} onClick={() => setShowReset(true)}>
                 <RefreshCw /> Restablecer contraseña
               </Button>
-              <Button
+              <ConfirmButton
                 size="sm"
                 variant="ghost"
-                disabled={pending}
-                onClick={() => {
-                  if (confirm('¿Desactivar el acceso? El usuario no podrá loguearse hasta que le crees uno nuevo.')) {
-                    run(() => disableAccessAction(employeeId))
-                  }
-                }}
+                title="¿Desactivar el acceso?"
+                description="No va a poder entrar más a la app hasta que le crees un acceso nuevo. El usuario NO se borra: se conserva para no perder el rastro de quién hizo cada cambio."
+                confirmLabel="Sí, desactivar"
+                onConfirm={() => disableAccessAction(employeeId)}
               >
                 <ShieldOff /> Desactivar acceso
-              </Button>
+              </ConfirmButton>
             </div>
           )}
         </div>

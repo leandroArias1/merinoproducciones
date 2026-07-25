@@ -30,12 +30,16 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
     prisma.event.findMany({ where: { deletedAt: null }, orderBy: { startAt: 'desc' }, select: { id: true, name: true } }),
   ])
 
+  // Entró/salió se derivan de lo que se está listando, así acompañan al filtro.
+  const entro = movements.reduce((a, m) => (m.direction === 'INCOME' ? a + m.amountCents : a), 0n)
+  const salio = movements.reduce((a, m) => (m.direction === 'EXPENSE' ? a + m.amountCents : a), 0n)
+
   return (
     <div>
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b pb-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Caja</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Ingresos, egresos y saldo.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Lo que entra, lo que sale y cuánto hay.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Link href="/admin/caja/cobrar"><Button variant="secondary" size="sm"><HandCoins /> Por cobrar</Button></Link>
@@ -45,9 +49,26 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
         </div>
       </header>
 
-      <div className="mb-6 rounded-lg border bg-secondary/40 px-5 py-4">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Saldo actual de caja</p>
-        <p className={`mt-1 text-3xl font-bold tabular-nums ${saldo < 0n ? 'text-destructive' : ''}`}>{formatPesos(saldo)}</p>
+      {/* Entra / sale / saldo: las tres cifras que contesta esta pantalla.
+          El saldo manda por tamaño; entró y salió lo explican. */}
+      <div className="mb-6 flex flex-wrap items-end gap-x-10 gap-y-4 rounded-lg border bg-paper px-5 py-4">
+        <div>
+          <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Saldo actual</p>
+          <p className={`num mt-0.5 text-3xl font-bold tracking-tight ${saldo < 0n ? 'text-destructive' : ''}`}>
+            {formatPesos(saldo)}
+          </p>
+        </div>
+        <div>
+          <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Entró</p>
+          <p className="num mt-0.5 text-lg font-semibold text-[var(--success)]">{formatPesos(entro)}</p>
+        </div>
+        <div>
+          <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Salió</p>
+          <p className="num mt-0.5 text-lg font-semibold text-destructive">{formatPesos(salio)}</p>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {sp.desde || sp.hasta ? 'Entró y salió, en el período filtrado.' : 'Entró y salió, sobre todo lo listado.'}
+        </p>
       </div>
 
       <div className="mb-6">
@@ -108,7 +129,29 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
                     {formatPesos(m.amountCents)}
                   </td>
                   <td className="px-4 py-2.5 text-right">
-                    <FinanceActionButton kind="delete-movement" id={m.id} label="Anular" variant="ghost" confirm="¿Anular este movimiento? Es plata: afecta el saldo y, si pagaba un gasto, ese gasto vuelve a deber." />
+                    <FinanceActionButton
+                      kind="delete-movement"
+                      id={m.id}
+                      label="Anular"
+                      variant="ghost"
+                      confirmLabel="Sí, anular"
+                      title="¿Anular este movimiento?"
+                      // Concreto, no genérico: el monto exacto, hacia dónde se
+                      // mueve el saldo y qué vuelve a figurar como impago.
+                      description={
+                        <>
+                          Es plata: el saldo {m.direction === 'INCOME' ? 'baja' : 'sube'}{' '}
+                          <b className="num text-foreground">{formatPesos(m.amountCents)}</b>
+                          {m.direction === 'INCOME' ? (
+                            <> y <b className="text-foreground">{m.concept}</b> vuelve a figurar como impago.</>
+                          ) : m.category === 'EXPENSE_PAYMENT' ? (
+                            <> y el gasto de <b className="text-foreground">{m.concept}</b> vuelve a figurar como impago.</>
+                          ) : (
+                            <>.</>
+                          )}
+                        </>
+                      }
+                    />
                   </td>
                 </tr>
               ))}

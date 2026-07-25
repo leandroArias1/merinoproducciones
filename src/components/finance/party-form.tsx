@@ -34,7 +34,7 @@ export function PartyForm({ kind }: { kind: 'CLIENT' | 'PROVIDER' }) {
   return (
     <span className="inline-flex items-center gap-1.5">
       <input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={`Nombre del ${label}`} className="h-8 w-52 rounded-md border bg-background px-2 text-sm" />
-      <Button size="sm" disabled={pending || !name.trim()} onClick={submit}>
+      <Button size="sm" disabled={!name.trim()} loading={pending} onClick={submit}>
         Crear
       </Button>
       <button className="text-xs text-muted-foreground underline" onClick={() => setOpen(false)}>

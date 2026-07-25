@@ -33,7 +33,7 @@ export function ConfigForm({ currentPesos }: { currentPesos: number | null }) {
       </div>
       <p className="text-xs text-muted-foreground">Se versiona: los meses ya liquidados conservan el valor que estaba vigente entonces.</p>
       <div className="flex items-center gap-2">
-        <Button size="sm" disabled={pending || !valid} onClick={submit}>
+        <Button size="sm" disabled={!valid} loading={pending} onClick={submit}>
           Guardar
         </Button>
         {done && !error && <span className="text-xs text-[var(--success)]">Actualizado.</span>}

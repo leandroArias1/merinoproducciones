@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useTransition } from 'react'
-import { Button } from '@/components/ui/button'
+import * as React from 'react'
+import { ConfirmButton } from '@/components/ui/confirm-dialog'
 import { payExpenseAction, deleteMovementAction, deleteExpenseAction } from '~/app/admin/caja/actions'
 
 type Kind = 'pay' | 'delete-movement' | 'delete-expense'
@@ -12,37 +12,43 @@ const RUN: Record<Kind, (id: string) => Promise<{ ok: boolean; error?: string }>
   'delete-expense': (id) => deleteExpenseAction(id),
 }
 
+/**
+ * Acciones de plata, con confirmación.
+ *
+ * La confirmación NO es un "¿estás seguro?" genérico: `description` dice qué
+ * va a pasar con números concretos —cuánto se mueve el saldo, qué vuelve a
+ * figurar como impago—, porque quien aprieta acá mueve dinero real y merece
+ * saber qué está firmando. El texto lo arma la pantalla, que es la que tiene
+ * el contexto (monto, concepto, si el gasto vuelve a deberse).
+ */
 export function FinanceActionButton({
   kind,
   id,
   label,
-  confirm: confirmMsg,
+  title,
+  description,
   variant = 'secondary',
+  confirmLabel,
 }: {
   kind: Kind
   id: string
   label: string
-  confirm: string
+  title: string
+  description: React.ReactNode
   variant?: 'secondary' | 'ghost'
+  confirmLabel?: string
 }) {
-  const [pending, startTransition] = useTransition()
-  const [error, setError] = useState<string | null>(null)
-
-  function onClick() {
-    if (!confirm(confirmMsg)) return
-    setError(null)
-    startTransition(async () => {
-      const res = await RUN[kind](id)
-      if (!res.ok) return setError(res.error ?? 'Error.')
-    })
-  }
-
   return (
-    <span className="inline-flex items-center gap-1">
-      <Button size="sm" variant={variant} disabled={pending} onClick={onClick}>
-        {label}
-      </Button>
-      {error && <span className="text-xs text-destructive">{error}</span>}
-    </span>
+    <ConfirmButton
+      size="sm"
+      variant={variant}
+      title={title}
+      description={description}
+      confirmLabel={confirmLabel ?? label}
+      tone="danger"
+      onConfirm={() => RUN[kind](id)}
+    >
+      {label}
+    </ConfirmButton>
   )
 }

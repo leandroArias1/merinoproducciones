@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { Plus, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ConfirmButton } from '@/components/ui/confirm-dialog'
 import { StatusBadge, assignmentTone } from './status-badge'
 import { AssignmentForm } from './assignment-form'
 import { ASSIGNMENT_STATUSES, ASSIGNMENT_STATUS_LABELS, type AssignmentStatus } from '@/lib/events/schema'
@@ -34,12 +35,6 @@ export function AssignmentsPanel({
   function changeStatus(id: string, status: AssignmentStatus) {
     startTransition(async () => {
       await setAssignmentStatusAction(id, status, eventId)
-    })
-  }
-  function remove(id: string) {
-    if (!confirm('¿Quitar esta asignación?')) return
-    startTransition(async () => {
-      await deleteAssignmentAction(id, eventId)
     })
   }
 
@@ -91,14 +86,18 @@ export function AssignmentsPanel({
                     </option>
                   ))}
                 </select>
-                <button
-                  onClick={() => remove(a.id)}
-                  disabled={pending}
-                  title="Quitar"
-                  className="rounded-md p-1.5 text-muted-foreground hover:bg-secondary hover:text-destructive [&_svg]:size-4"
+                <ConfirmButton
+                  size="sm"
+                  variant="ghost"
+                  className="px-2 hover:text-destructive"
+                  aria-label={`Quitar a `}
+                  title={`¿Quitar a  de este evento?`}
+                  description="Deja de tenerlo asignado ese día. Si ya fichó, esa fichada se conserva."
+                  confirmLabel="Sí, quitar"
+                  onConfirm={() => deleteAssignmentAction(a.id, eventId)}
                 >
                   <X />
-                </button>
+                </ConfirmButton>
               </div>
             </li>
           ))}

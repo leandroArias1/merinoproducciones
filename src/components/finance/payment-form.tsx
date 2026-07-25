@@ -43,7 +43,7 @@ export function PaymentForm({ eventId }: { eventId: string }) {
         placeholder="pesos"
         className="h-8 w-28 rounded-md border bg-background px-2 text-sm"
       />
-      <Button size="sm" disabled={pending || !valid} onClick={submit}>
+      <Button size="sm" disabled={!valid} loading={pending} onClick={submit}>
         Cobrar
       </Button>
       <button className="text-xs text-muted-foreground underline" onClick={() => setOpen(false)}>

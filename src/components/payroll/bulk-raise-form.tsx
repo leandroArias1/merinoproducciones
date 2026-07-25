@@ -72,7 +72,7 @@ export function BulkRaiseForm({ employees }: { employees: RaiseEmployeeVM[] }) {
             className="h-9 w-40 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-primary"
           />
         </div>
-        <Button size="sm" disabled={pending || !valid} onClick={submit}>
+        <Button size="sm" disabled={!valid} loading={pending} onClick={submit}>
           Aplicar a {selected.size} seleccionado(s)
         </Button>
         {error && <span className="self-center text-xs text-destructive">{error}</span>}

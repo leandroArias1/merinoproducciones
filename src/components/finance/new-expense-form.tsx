@@ -107,7 +107,7 @@ export function NewExpenseForm({
         Pagado al toque (sale de caja ahora). Sin tildar, queda como cuenta por pagar.
       </label>
       <div className="flex items-center gap-2">
-        <Button size="sm" disabled={pending || !valid} onClick={submit}>
+        <Button size="sm" disabled={!valid} loading={pending} onClick={submit}>
           Registrar gasto
         </Button>
         {done && !error && <span className="text-xs text-[var(--success)]">Guardado.</span>}

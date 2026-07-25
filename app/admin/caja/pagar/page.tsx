@@ -56,8 +56,34 @@ export default async function PagarPage() {
                   <td className="num px-4 py-2.5 text-muted-foreground">{fechaAR(p.incurredOn)}</td>
                   <td className="px-4 py-2.5 text-right">
                     <span className="inline-flex items-center gap-1.5">
-                      <FinanceActionButton kind="pay" id={p.id} label="Pagar" confirm={`¿Pagar ${formatPesos(p.amountCents)}? Sale de caja ahora.`} />
-                      <FinanceActionButton kind="delete-expense" id={p.id} label="Anular" variant="ghost" confirm="¿Anular este gasto?" />
+                      <FinanceActionButton
+                        kind="pay"
+                        id={p.id}
+                        label="Pagar"
+                        confirmLabel="Sí, pagar"
+                        title={`¿Pagar ${formatPesos(p.amountCents)}?`}
+                        description={
+                          <>
+                            Sale de caja ahora: el saldo baja{' '}
+                            <b className="num text-foreground">{formatPesos(p.amountCents)}</b> y{' '}
+                            <b className="text-foreground">{p.description}</b> deja de figurar como deuda.
+                          </>
+                        }
+                      />
+                      <FinanceActionButton
+                        kind="delete-expense"
+                        id={p.id}
+                        label="Anular"
+                        variant="ghost"
+                        confirmLabel="Sí, anular"
+                        title="¿Anular este gasto?"
+                        description={
+                          <>
+                            <b className="text-foreground">{p.description}</b> deja de figurar como deuda. El saldo no
+                            se mueve, porque todavía no se pagó.
+                          </>
+                        }
+                      />
                     </span>
                   </td>
                 </tr>

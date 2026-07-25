@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { ConfirmButton } from '@/components/ui/confirm-dialog'
 import { EVENT_STATUS_LABELS, type EventStatus } from '@/lib/events/schema'
 import { setEventStatusAction, deleteEventAction } from '~/app/admin/eventos/actions'
 
@@ -19,53 +20,51 @@ export function EventStatusControls({ id, status }: { id: string; status: EventS
   const next = NEXT[status]
   const closed = status === 'CANCELLED' || status === 'COMPLETED'
 
-  function run(fn: () => Promise<{ ok: boolean; error?: string }>) {
+  // Avanzar de estado no confirma (es reversible y es el camino normal), pero sí
+  // muestra "Guardando…": la mutación tarda ~3 s y el silencio se lee como colgado.
+  function avanzar(to: EventStatus) {
     setError(null)
     startTransition(async () => {
-      const res = await fn()
+      const res = await setEventStatusAction(id, to)
       if (!res.ok) return setError(res.error ?? 'Error')
-      router.refresh()
     })
   }
 
   return (
     <div className="flex flex-wrap items-center gap-2">
       {next && (
-        <Button size="sm" disabled={pending} onClick={() => run(() => setEventStatusAction(id, next))}>
+        <Button size="sm" loading={pending} onClick={() => avanzar(next)}>
           Marcar {EVENT_STATUS_LABELS[next].toLowerCase()}
         </Button>
       )}
       {!closed && (
-        <Button
+        <ConfirmButton
           size="sm"
           variant="secondary"
-          disabled={pending}
-          onClick={() => {
-            if (confirm('¿Cancelar el evento? Se cancelan todas sus asignaciones.')) {
-              run(() => setEventStatusAction(id, 'CANCELLED'))
-            }
-          }}
+          title="¿Cancelar el evento?"
+          description="Se cancelan también todas sus asignaciones, así que a nadie se le va a esperar ese día ni le va a generar una ausencia."
+          confirmLabel="Sí, cancelar"
+          onConfirm={() => setEventStatusAction(id, 'CANCELLED')}
         >
           Cancelar evento
-        </Button>
+        </ConfirmButton>
       )}
-      <Button
+      <ConfirmButton
         size="sm"
         variant="ghost"
-        disabled={pending}
-        onClick={() => {
-          if (confirm('¿Eliminar el evento? (baja lógica)')) {
-            startTransition(async () => {
-              const res = await deleteEventAction(id)
-              if (!res.ok) return setError(res.error)
-              router.push('/admin/eventos')
-              router.refresh()
-            })
-          }
+        title="¿Eliminar el evento?"
+        description="Sale del listado y del calendario. Es una baja lógica: el evento y sus asignaciones se conservan en la base, pero dejan de contar en cualquier pantalla."
+        confirmLabel="Sí, eliminar"
+        onConfirm={async () => {
+          const res = await deleteEventAction(id)
+          if (!res.ok) return res
+          router.push('/admin/eventos')
+          router.refresh()
+          return res
         }}
       >
         Eliminar
-      </Button>
+      </ConfirmButton>
       {error && <span className="text-xs text-destructive">{error}</span>}
     </div>
   )

@@ -1,54 +1,62 @@
 'use client'
 
-import { useState, useTransition } from 'react'
 import { Lock, BadgeCheck, Unlock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { ConfirmButton } from '@/components/ui/confirm-dialog'
 import { closePeriodAction, payPeriodAction, reopenPeriodAction } from '~/app/admin/liquidaciones/actions'
 
 type Status = 'OPEN' | 'CLOSED' | 'PAID' | 'NONE'
 
+/**
+ * Cerrar, pagar y reabrir un período. Las tres mueven sueldos, así que las tres
+ * confirman diciendo qué pasa —y "marcar pagado" avisa que es sin vuelta atrás,
+ * que es la única de las tres que no se puede deshacer.
+ */
 export function PeriodActions({ year, month, status, canClose }: { year: number; month: number; status: Status; canClose: boolean }) {
-  const [pending, startTransition] = useTransition()
-  const [error, setError] = useState<string | null>(null)
-
-  function run(fn: () => Promise<{ ok: boolean; error?: string }>, confirmMsg: string) {
-    if (!confirm(confirmMsg)) return
-    setError(null)
-    startTransition(async () => {
-      const res = await fn()
-      if (!res.ok) return setError(res.error ?? 'Error.')
-    })
-  }
-
   return (
-    <div className="flex flex-col items-end gap-1.5">
-      <div className="flex items-center gap-2">
-        {(status === 'OPEN' || status === 'NONE') && (
-          <Button
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      {(status === 'OPEN' || status === 'NONE') && (
+        <ConfirmButton
+          size="sm"
+          disabled={!canClose}
+          title="¿Cerrar el período?"
+          description="Se generan los recibos de los empleados que están listos. Los que estén bloqueados quedan afuera y podés cerrarlos después, cuando resuelvas sus días sin verificar."
+          confirmLabel="Sí, cerrar"
+          tone="default"
+          onConfirm={() => closePeriodAction(year, month)}
+        >
+          <Lock /> Cerrar período
+        </ConfirmButton>
+      )}
+      {status === 'CLOSED' && (
+        <>
+          <ConfirmButton
             size="sm"
-            disabled={pending || !canClose}
-            onClick={() => run(() => closePeriodAction(year, month), '¿Cerrar el período? Se liquidan los empleados listos; los bloqueados quedan pendientes.')}
+            title="¿Marcar el período como pagado?"
+            description="Esto no tiene vuelta atrás: un período pagado ya no se puede reabrir. Si después hay que corregir algo, se hace con un ajuste el mes siguiente."
+            confirmLabel="Sí, marcar pagado"
+            onConfirm={() => payPeriodAction(year, month)}
           >
-            <Lock /> Cerrar período
-          </Button>
-        )}
-        {status === 'CLOSED' && (
-          <>
-            <Button size="sm" disabled={pending} onClick={() => run(() => payPeriodAction(year, month), '¿Marcar el período como PAGADO? No se podrá reabrir.')}>
-              <BadgeCheck /> Marcar pagado
-            </Button>
-            <Button size="sm" variant="secondary" disabled={pending} onClick={() => run(() => reopenPeriodAction(year, month), '¿Reabrir el período para corregir? Los recibos se van a recalcular al volver a cerrar.')}>
-              <Unlock /> Reabrir
-            </Button>
-          </>
-        )}
-        {status === 'PAID' && (
-          <Button size="sm" variant="secondary" disabled title="Un período pagado no se reabre; corregí con un ajuste el mes siguiente.">
+            <BadgeCheck /> Marcar pagado
+          </ConfirmButton>
+          <ConfirmButton
+            size="sm"
+            variant="secondary"
+            title="¿Reabrir el período?"
+            description="Vuelve a quedar abierto para corregir. Los recibos se recalculan cuando lo vuelvas a cerrar, así que los montos pueden cambiar."
+            confirmLabel="Sí, reabrir"
+            tone="default"
+            onConfirm={() => reopenPeriodAction(year, month)}
+          >
             <Unlock /> Reabrir
-          </Button>
-        )}
-      </div>
-      {error && <span className="text-xs text-destructive">{error}</span>}
+          </ConfirmButton>
+        </>
+      )}
+      {status === 'PAID' && (
+        <Button size="sm" variant="secondary" disabled title="Un período pagado no se reabre; corregí con un ajuste el mes siguiente.">
+          <Unlock /> Reabrir
+        </Button>
+      )}
     </div>
   )
 }

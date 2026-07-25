@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
+import { ConfirmButton } from '@/components/ui/confirm-dialog'
 import { updatePartyAction, deletePartyAction } from '~/app/admin/caja/actions'
 
 /**
@@ -29,21 +30,12 @@ export function PartyRowActions({ id, name, notes, kindLabel }: { id: string; na
     })
   }
 
-  function remove() {
-    if (!confirm(`¿Eliminar ${kindLabel} "${name}"? Se conserva en los eventos/gastos que ya lo usan.`)) return
-    setError(null)
-    startTransition(async () => {
-      const res = await deletePartyAction(id)
-      if (!res.ok) return setError(res.error ?? 'Error.')
-    })
-  }
-
   if (editing) {
     return (
       <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
         <input autoFocus value={n} onChange={(e) => setN(e.target.value)} placeholder="Nombre" className="h-8 w-36 rounded-md border bg-background px-2 text-sm" />
         <input value={nt} onChange={(e) => setNt(e.target.value)} placeholder="Notas (opcional)" className="h-8 w-44 rounded-md border bg-background px-2 text-sm" />
-        <Button size="sm" disabled={pending || !n.trim()} onClick={save}>
+        <Button size="sm" disabled={!n.trim()} loading={pending} onClick={save}>
           Guardar
         </Button>
         <button className="text-xs text-muted-foreground underline" onClick={() => { setEditing(false); setN(name); setNt(notes ?? '') }}>
@@ -58,9 +50,16 @@ export function PartyRowActions({ id, name, notes, kindLabel }: { id: string; na
       <Button size="sm" variant="secondary" disabled={pending} onClick={() => setEditing(true)}>
         Editar
       </Button>
-      <Button size="sm" variant="ghost" disabled={pending} onClick={remove}>
+      <ConfirmButton
+        size="sm"
+        variant="ghost"
+        title={`¿Eliminar a ${name}?`}
+        description={`Sale de la agenda de ${kindLabel}s, pero se conserva en los eventos y gastos que ya lo tienen cargado: esos no cambian.`}
+        confirmLabel="Sí, eliminar"
+        onConfirm={() => deletePartyAction(id)}
+      >
         Eliminar
-      </Button>
+      </ConfirmButton>
       {error && <span className="text-xs text-destructive">{error}</span>}
     </span>
   )
