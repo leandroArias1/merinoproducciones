@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db'
 import { workDateFromKey } from '@/lib/attendance/timezone'
 import { registerClientPayment, registerExpense, payExpense, deleteMovement } from '@/lib/finance/cash'
 import { buildEventProfit, cashBalance, totalReceivable, totalPayable } from '@/lib/finance/profit'
+import { createParty, setEventPrice, listClientsWithStats, listProvidersWithStats } from '@/lib/finance/party'
 import { getAbsentDeductionCents, setAbsentDeductionCents } from '@/lib/payroll/settings'
 
 const ACTOR = 'admin-user-id'
@@ -106,6 +107,55 @@ describe('finanzas — orquestación', () => {
     expect(await cashBalance(prisma)).toBe(10_000_000n) // 40 − 30
     expect(await totalReceivable(prisma)).toBe(60_000_000n) // 100 pactado − 40 cobrado
     expect(await totalPayable(prisma)).toBe(25_000_000n)
+  })
+
+  it('editar solo el precio de un evento CONSERVA el cliente (bug de pérdida de dato)', async () => {
+    const clientId = await createParty(prisma, { name: 'Cliente A', kind: 'CLIENT' }, ACTOR)
+    const ev = await mkEvent(null)
+    await setEventPrice(prisma, ev.id, { agreedCents: 100_000_000n, clientId }, ACTOR)
+    expect((await buildEventProfit(prisma, ev.id))!.clientId).toBe(clientId)
+
+    // Re-cargar SOLO el precio, re-pasando el cliente actual (lo que ahora hace el form).
+    await setEventPrice(prisma, ev.id, { agreedCents: 150_000_000n, clientId }, ACTOR)
+    const fin = await buildEventProfit(prisma, ev.id)
+    expect(fin!.agreedCents).toBe(150_000_000n)
+    expect(fin!.clientId).toBe(clientId) // ← se conserva
+
+    // Documenta el modo destructivo: pasar clientId null lo borra. Por eso el form
+    // DEBE pre-cargar currentClientId; si no, guardar precio dejaba el evento sin cliente.
+    await setEventPrice(prisma, ev.id, { agreedCents: 150_000_000n, clientId: null }, ACTOR)
+    expect((await buildEventProfit(prisma, ev.id))!.clientId).toBeNull()
+  })
+
+  it('listClientsWithStats: eventos vinculados + pendiente; el cliente sin evento aparece en cero', async () => {
+    const conEvento = await createParty(prisma, { name: 'Con evento', kind: 'CLIENT' }, ACTOR)
+    const sinEvento = await createParty(prisma, { name: 'Sin evento', kind: 'CLIENT' }, ACTOR)
+    const ev = await mkEvent(100_000_000n)
+    await setEventPrice(prisma, ev.id, { agreedCents: 100_000_000n, clientId: conEvento }, ACTOR)
+    await registerClientPayment(prisma, { eventId: ev.id, amountCents: 40_000_000n, occurredOn: D(DAY) }, ACTOR)
+
+    const stats = await listClientsWithStats(prisma)
+    const a = stats.find((s) => s.id === conEvento)!
+    const b = stats.find((s) => s.id === sinEvento)!
+    expect(a.count).toBe(1)
+    expect(a.pendingCents).toBe(60_000_000n) // 100 pactado − 40 cobrado
+    expect(b.count).toBe(0) // aparece igual...
+    expect(b.pendingCents).toBe(0n) // ...en cero (el bug era que no aparecía)
+  })
+
+  it('listProvidersWithStats: gastos vinculados + por pagar; el proveedor sin gasto aparece en cero', async () => {
+    const conGasto = await createParty(prisma, { name: 'Con gasto', kind: 'PROVIDER' }, ACTOR)
+    const sinGasto = await createParty(prisma, { name: 'Sin gasto', kind: 'PROVIDER' }, ACTOR)
+    await registerExpense(prisma, { description: 'Deuda', amountCents: 25_000_000n, incurredOn: D(DAY), category: 'SUPPLIES', providerId: conGasto }, ACTOR) // PENDING
+    await registerExpense(prisma, { description: 'Pagado', amountCents: 10_000_000n, incurredOn: D(DAY), category: 'SUPPLIES', providerId: conGasto, pay: { occurredOn: D(DAY) } }, ACTOR) // PAID
+
+    const stats = await listProvidersWithStats(prisma)
+    const a = stats.find((s) => s.id === conGasto)!
+    const b = stats.find((s) => s.id === sinGasto)!
+    expect(a.count).toBe(2) // ambos gastos vinculados
+    expect(a.pendingCents).toBe(25_000_000n) // solo el PENDING cuenta como por pagar
+    expect(b.count).toBe(0)
+    expect(b.pendingCents).toBe(0n)
   })
 
   it('config del descuento: versionado, el vigente cambia y audita', async () => {

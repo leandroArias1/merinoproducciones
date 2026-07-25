@@ -2,10 +2,11 @@ import Link from 'next/link'
 import { prisma } from '@/lib/db'
 import { listPayables } from '@/lib/finance/queries'
 import { totalPayable } from '@/lib/finance/profit'
-import { listParties } from '@/lib/finance/party'
+import { listProvidersWithStats } from '@/lib/finance/party'
 import { formatPesos } from '@/lib/payroll/format'
 import { FinanceActionButton } from '@/components/finance/finance-action-button'
 import { PartyForm } from '@/components/finance/party-form'
+import { PartyList } from '@/components/finance/party-list'
 
 const CAT_LABELS: Record<string, string> = { TRANSPORT: 'Transporte', EQUIPMENT: 'Equipos', VENUE: 'Lugar', SUPPLIES: 'Insumos', OTHER: 'Otro' }
 const fmtDate = (d: Date) => d.toISOString().slice(0, 10)
@@ -14,7 +15,7 @@ export default async function PagarPage() {
   const [payables, payable, providers] = await Promise.all([
     listPayables(prisma),
     totalPayable(prisma),
-    listParties(prisma, 'PROVIDER'),
+    listProvidersWithStats(prisma),
   ])
 
   return (
@@ -32,6 +33,12 @@ export default async function PagarPage() {
         </div>
       </header>
 
+      <section className="mb-8">
+        <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Proveedores</h2>
+        <PartyList rows={providers} kind="PROVIDER" />
+      </section>
+
+      <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Gastos por pagar</h2>
       {payables.length === 0 ? (
         <div className="grid place-items-center rounded-lg border border-dashed py-16 text-center">
           <p className="text-sm font-medium">No hay cuentas por pagar</p>

@@ -18,6 +18,7 @@ export interface EventFinance {
   eventId: string
   name: string
   agreedCents: bigint | null
+  clientId: string | null // cliente asignado al evento (para pre-cargar el form de precio sin borrarlo)
   costCents: bigint // Σ Expenses (PENDING + PAID) imputados
   paidCents: bigint // Σ INCOME movements del evento (cobrado)
   pendingCents: bigint // por cobrar = max(0, pactado − cobrado)
@@ -30,12 +31,13 @@ function toMap(rows: { eventId: string | null; _sum: { amountCents: bigint | nul
   return m
 }
 
-function assemble(event: { id: string; name: string; agreedCents: bigint | null }, costCents: bigint, paidCents: bigint): EventFinance {
+function assemble(event: { id: string; name: string; agreedCents: bigint | null; clientId: string | null }, costCents: bigint, paidCents: bigint): EventFinance {
   const pending = (event.agreedCents ?? 0n) - paidCents
   return {
     eventId: event.id,
     name: event.name,
     agreedCents: event.agreedCents,
+    clientId: event.clientId,
     costCents,
     paidCents,
     pendingCents: pending > 0n ? pending : 0n,
@@ -45,7 +47,7 @@ function assemble(event: { id: string; name: string; agreedCents: bigint | null 
 
 /** Rentabilidad + cobranza de UN evento. */
 export async function buildEventProfit(db: Db, eventId: string): Promise<EventFinance | null> {
-  const event = await db.event.findFirst({ where: { id: eventId, deletedAt: null }, select: { id: true, name: true, agreedCents: true } })
+  const event = await db.event.findFirst({ where: { id: eventId, deletedAt: null }, select: { id: true, name: true, agreedCents: true, clientId: true } })
   if (!event) return null
   const [cost, paid] = await Promise.all([
     db.expense.aggregate({ where: { eventId, deletedAt: null }, _sum: { amountCents: true } }),
@@ -59,7 +61,7 @@ export async function listEventProfits(db: Db, opts?: { eventIds?: string[] }): 
   const events = await db.event.findMany({
     where: { deletedAt: null, ...(opts?.eventIds ? { id: { in: opts.eventIds } } : {}) },
     orderBy: { startAt: 'desc' },
-    select: { id: true, name: true, agreedCents: true },
+    select: { id: true, name: true, agreedCents: true, clientId: true },
   })
   if (events.length === 0) return []
   const ids = events.map((e) => e.id)

@@ -122,11 +122,17 @@ export const setEventPriceAction = action(
 
 // ── Clientes / proveedores ──
 
+function revalidateCaja(): void {
+  revalidatePath('/admin/caja')
+  revalidatePath('/admin/caja/cobrar')
+  revalidatePath('/admin/caja/pagar')
+}
+
 export const createPartyAction = action(['ADMIN'], async (ctx, name: string, kind: string, notes?: string): Promise<ActionResult> => {
   if (kind !== 'CLIENT' && kind !== 'PROVIDER') return { ok: false, error: 'Tipo inválido.' }
   try {
     const id = await createParty(prisma, { name, kind: kind as PartyKind, notes }, ctx.actorId)
-    revalidatePath('/admin/caja')
+    revalidateCaja()
     return { ok: true, id }
   } catch (e) {
     return fail(e)
@@ -136,7 +142,7 @@ export const createPartyAction = action(['ADMIN'], async (ctx, name: string, kin
 export const updatePartyAction = action(['ADMIN'], async (ctx, id: string, name: string, notes?: string): Promise<ActionResult> => {
   try {
     await updateParty(prisma, id, { name, notes }, ctx.actorId)
-    revalidatePath('/admin/caja')
+    revalidateCaja()
     return { ok: true }
   } catch (e) {
     return fail(e)
@@ -146,7 +152,7 @@ export const updatePartyAction = action(['ADMIN'], async (ctx, id: string, name:
 export const deletePartyAction = action(['ADMIN'], async (ctx, id: string): Promise<ActionResult> => {
   try {
     await deleteParty(prisma, id, ctx.actorId)
-    revalidatePath('/admin/caja')
+    revalidateCaja()
     return { ok: true }
   } catch (e) {
     return fail(e)

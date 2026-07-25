@@ -51,6 +51,53 @@ export async function listParties(db: Db, kind?: PartyKind) {
   })
 }
 
+/** Un party con sus agregados para la lista gestionable. `count` = eventos (CLIENT) o
+ *  gastos (PROVIDER) vinculados; `pendingCents` = por cobrar (CLIENT) o por pagar (PROVIDER). */
+export interface PartyWithStats {
+  id: string
+  name: string
+  notes: string | null
+  count: number
+  pendingCents: bigint
+}
+
+/** Clientes con: cantidad de eventos asignados + Σ pendiente de cobro. Bulk, sin N+1. */
+export async function listClientsWithStats(db: Db): Promise<PartyWithStats[]> {
+  const clients = await db.party.findMany({ where: { kind: 'CLIENT', deletedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, notes: true } })
+  if (clients.length === 0) return []
+  const events = await db.event.findMany({ where: { deletedAt: null, clientId: { in: clients.map((c) => c.id) } }, select: { id: true, clientId: true, agreedCents: true } })
+  const paid = events.length
+    ? await db.cashMovement.groupBy({ by: ['eventId'], where: { eventId: { in: events.map((e) => e.id) }, direction: 'INCOME', deletedAt: null }, _sum: { amountCents: true } })
+    : []
+  const paidBy = new Map<string, bigint>()
+  for (const p of paid) if (p.eventId) paidBy.set(p.eventId, p._sum.amountCents ?? 0n)
+  const countBy = new Map<string, number>()
+  const pendBy = new Map<string, bigint>()
+  for (const e of events) {
+    if (!e.clientId) continue
+    countBy.set(e.clientId, (countBy.get(e.clientId) ?? 0) + 1)
+    const pend = (e.agreedCents ?? 0n) - (paidBy.get(e.id) ?? 0n)
+    if (pend > 0n) pendBy.set(e.clientId, (pendBy.get(e.clientId) ?? 0n) + pend)
+  }
+  return clients.map((c) => ({ id: c.id, name: c.name, notes: c.notes, count: countBy.get(c.id) ?? 0, pendingCents: pendBy.get(c.id) ?? 0n }))
+}
+
+/** Proveedores con: cantidad de gastos vinculados + Σ por pagar (Expenses PENDING). Bulk, sin N+1. */
+export async function listProvidersWithStats(db: Db): Promise<PartyWithStats[]> {
+  const providers = await db.party.findMany({ where: { kind: 'PROVIDER', deletedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true, notes: true } })
+  if (providers.length === 0) return []
+  const ids = providers.map((p) => p.id)
+  const [counts, pend] = await Promise.all([
+    db.expense.groupBy({ by: ['providerId'], where: { providerId: { in: ids }, deletedAt: null }, _count: { _all: true } }),
+    db.expense.groupBy({ by: ['providerId'], where: { providerId: { in: ids }, deletedAt: null, status: 'PENDING' }, _sum: { amountCents: true } }),
+  ])
+  const countBy = new Map<string, number>()
+  for (const c of counts) if (c.providerId) countBy.set(c.providerId, c._count._all)
+  const pendBy = new Map<string, bigint>()
+  for (const p of pend) if (p.providerId) pendBy.set(p.providerId, p._sum.amountCents ?? 0n)
+  return providers.map((p) => ({ id: p.id, name: p.name, notes: p.notes, count: countBy.get(p.id) ?? 0, pendingCents: pendBy.get(p.id) ?? 0n }))
+}
+
 /** Precio pactado + cliente del evento (la cuenta por cobrar). Auditado. */
 export async function setEventPrice(db: Db, eventId: string, args: { agreedCents: bigint | null; clientId: string | null }, actorId: string): Promise<void> {
   if (args.agreedCents !== null && args.agreedCents < 0n) throw new ActionError('VALIDATION', 'El precio no puede ser negativo.')

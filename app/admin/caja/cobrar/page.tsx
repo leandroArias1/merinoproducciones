@@ -2,18 +2,19 @@ import Link from 'next/link'
 import { prisma } from '@/lib/db'
 import { listEventProfits } from '@/lib/finance/profit'
 import { totalReceivable } from '@/lib/finance/profit'
-import { listParties } from '@/lib/finance/party'
+import { listClientsWithStats } from '@/lib/finance/party'
 import { formatPesos } from '@/lib/payroll/format'
 import { PaymentForm } from '@/components/finance/payment-form'
 import { SetPriceForm } from '@/components/finance/set-price-form'
 import { PartyForm } from '@/components/finance/party-form'
+import { PartyList } from '@/components/finance/party-list'
 
 const pesos = (cents: bigint) => Number(cents) / 100 // solo para prellenar el form (input en pesos)
 
 export default async function CobrarPage() {
   const [events, clients, receivable] = await Promise.all([
     listEventProfits(prisma),
-    listParties(prisma, 'CLIENT'),
+    listClientsWithStats(prisma),
     totalReceivable(prisma),
   ])
   const clientOpts = clients.map((c) => ({ id: c.id, name: c.name }))
@@ -33,6 +34,12 @@ export default async function CobrarPage() {
         </div>
       </header>
 
+      <section className="mb-8">
+        <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Clientes</h2>
+        <PartyList rows={clients} kind="CLIENT" />
+      </section>
+
+      <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Eventos por cobrar</h2>
       {events.length === 0 ? (
         <div className="grid place-items-center rounded-lg border border-dashed py-16 text-center text-sm text-muted-foreground">No hay eventos.</div>
       ) : (
@@ -59,7 +66,7 @@ export default async function CobrarPage() {
                       <td className="px-4 py-2.5 text-right">
                         <span className="inline-flex items-center gap-2">
                           {e.pendingCents > 0n && <PaymentForm eventId={e.eventId} />}
-                          <SetPriceForm eventId={e.eventId} clients={clientOpts} currentPesos={pesos(e.agreedCents!)} cta="Editar precio" />
+                          <SetPriceForm eventId={e.eventId} clients={clientOpts} currentPesos={pesos(e.agreedCents!)} currentClientId={e.clientId} cta="Editar precio" />
                         </span>
                       </td>
                     </>
@@ -67,7 +74,7 @@ export default async function CobrarPage() {
                     <>
                       <td className="px-4 py-2.5 text-right text-xs text-muted-foreground" colSpan={3}>precio a definir</td>
                       <td className="px-4 py-2.5 text-right">
-                        <SetPriceForm eventId={e.eventId} clients={clientOpts} />
+                        <SetPriceForm eventId={e.eventId} clients={clientOpts} currentClientId={e.clientId} />
                       </td>
                     </>
                   )}
