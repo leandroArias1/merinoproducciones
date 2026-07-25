@@ -6,6 +6,8 @@ import { prisma } from '@/lib/db'
 import { employeeSchema } from '@/lib/employees/schema'
 import { createEmployee, updateEmployee, softDeleteEmployee } from '@/lib/employees/employees'
 import { buildImportPreview, commitImport, type ImportPreview, type ImportResult } from '@/lib/employees/import'
+import { grantAccess, setUserRole, resetPassword, disableAccess } from '@/lib/users/access'
+import type { AppRole } from '@/lib/auth/access'
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string }
 
@@ -71,10 +73,87 @@ export type CommitResult = { ok: true; result: ImportResult } | { ok: false; err
 
 export const commitImportAction = action(['ADMIN'], async (ctx, csvText: string): Promise<CommitResult> => {
   try {
-    // Re-valida server-side y crea en una sola transacción (todo o nada).
+    // Re-valida server-side y crea por lotes (todo o nada a nivel usuario).
     const result = await commitImport(prisma, csvText, ctx.actorId)
     revalidatePath('/admin/empleados')
     return { ok: true, result }
+  } catch (e) {
+    if (e instanceof ActionError) return { ok: false, error: e.message }
+    // El import NUNCA puede fallar en silencio (era el bug #1): cualquier error
+    // inesperado se devuelve como mensaje, no se re-lanza a la boundary de Next.
+    const detail = e instanceof Error ? e.message : String(e)
+    return { ok: false, error: `No se pudo importar (error inesperado): ${detail}` }
+  }
+})
+
+// ── Gestión de acceso (login) del empleado ──
+
+const ROLES: AppRole[] = ['ADMIN', 'SUPERVISOR', 'EMPLOYEE']
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function validateEmail(email: string): string | null {
+  return EMAIL_RE.test(email.trim()) ? null : 'Email inválido.'
+}
+function validatePassword(pw: string): string | null {
+  return pw.length >= 8 ? null : 'La contraseña debe tener al menos 8 caracteres.'
+}
+function validateRole(role: string): string | null {
+  return ROLES.includes(role as AppRole) ? null : 'Rol inválido.'
+}
+
+export const grantAccessAction = action(
+  ['ADMIN'],
+  async (ctx, employeeId: string, email: string, password: string, role: string): Promise<ActionResult> => {
+    const err = validateEmail(email) ?? validatePassword(password) ?? validateRole(role)
+    if (err) return { ok: false, error: err }
+    try {
+      await grantAccess(prisma, { employeeId, email, password, role: role as AppRole }, ctx.actorId)
+      revalidatePath(`/admin/empleados/${employeeId}`)
+      return { ok: true }
+    } catch (e) {
+      if (e instanceof ActionError) return { ok: false, error: e.message }
+      return { ok: false, error: `No se pudo crear el acceso: ${e instanceof Error ? e.message : String(e)}` }
+    }
+  },
+)
+
+export const setUserRoleAction = action(
+  ['ADMIN'],
+  async (ctx, employeeId: string, role: string): Promise<ActionResult> => {
+    const err = validateRole(role)
+    if (err) return { ok: false, error: err }
+    try {
+      await setUserRole(prisma, employeeId, role as AppRole, ctx.actorId)
+      revalidatePath(`/admin/empleados/${employeeId}`)
+      return { ok: true }
+    } catch (e) {
+      if (e instanceof ActionError) return { ok: false, error: e.message }
+      throw e
+    }
+  },
+)
+
+export const resetPasswordAction = action(
+  ['ADMIN'],
+  async (ctx, employeeId: string, password: string): Promise<ActionResult> => {
+    const err = validatePassword(password)
+    if (err) return { ok: false, error: err }
+    try {
+      await resetPassword(prisma, employeeId, password, ctx.actorId)
+      revalidatePath(`/admin/empleados/${employeeId}`)
+      return { ok: true }
+    } catch (e) {
+      if (e instanceof ActionError) return { ok: false, error: e.message }
+      throw e
+    }
+  },
+)
+
+export const disableAccessAction = action(['ADMIN'], async (ctx, employeeId: string): Promise<ActionResult> => {
+  try {
+    await disableAccess(prisma, employeeId, ctx.actorId)
+    revalidatePath(`/admin/empleados/${employeeId}`)
+    return { ok: true }
   } catch (e) {
     if (e instanceof ActionError) return { ok: false, error: e.message }
     throw e
