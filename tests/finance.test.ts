@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 import { prisma } from '@/lib/db'
-import { workDateFromKey } from '@/lib/attendance/timezone'
+import { workDateFromKey, dateKey } from '@/lib/attendance/timezone'
 import { registerClientPayment, registerExpense, payExpense, deleteMovement } from '@/lib/finance/cash'
 import { buildEventProfit, cashBalance, totalReceivable, totalPayable } from '@/lib/finance/profit'
 import { createParty, setEventPrice, listClientsWithStats, listProvidersWithStats } from '@/lib/finance/party'
@@ -156,6 +156,46 @@ describe('finanzas — orquestación', () => {
     expect(a.pendingCents).toBe(25_000_000n) // solo el PENDING cuenta como por pagar
     expect(b.count).toBe(0)
     expect(b.pendingCents).toBe(0n)
+  })
+
+  it('config: cambiar el descuento el MISMO día que se cargó el vigente NO viola el CHECK', async () => {
+    const HOY = D('2026-09-10')
+    await setAbsentDeductionCents(prisma, 3_000_000n, HOY, ACTOR)
+    expect(await getAbsentDeductionCents(prisma)).toBe(3_000_000n)
+
+    // Bug real de prod: cerrar el vigente "el día anterior" le dejaba
+    // effectiveTo < effectiveFrom y la DB lo rechazaba con
+    // payroll_config_effective_chk. Pasa siempre que se corrige un valor
+    // recién cargado, que es el caso más común.
+    await expect(setAbsentDeductionCents(prisma, 3_500_000n, HOY, ACTOR)).resolves.toBe(true)
+    expect(await getAbsentDeductionCents(prisma)).toBe(3_500_000n)
+
+    // Se pisó el vigente: una sola fila, sin rangos invertidos.
+    expect(await prisma.payrollConfig.count({ where: { deletedAt: null } })).toBe(1)
+    const row = await prisma.payrollConfig.findFirstOrThrow({ where: { effectiveTo: null, deletedAt: null } })
+    expect(dateKey(row.effectiveFrom)).toBe('2026-09-10')
+    expect(await prisma.auditLog.count({ where: { domain: 'PAYROLL', action: 'config-change' } })).toBe(2)
+  })
+
+  it('config: cambiarlo en un día POSTERIOR sí versiona (cierra el anterior el día previo)', async () => {
+    await setAbsentDeductionCents(prisma, 3_000_000n, D('2026-09-01'), ACTOR)
+    await setAbsentDeductionCents(prisma, 4_000_000n, D('2026-09-10'), ACTOR)
+
+    expect(await getAbsentDeductionCents(prisma)).toBe(4_000_000n)
+    expect(await prisma.payrollConfig.count({ where: { deletedAt: null } })).toBe(2)
+    const cerrada = await prisma.payrollConfig.findFirstOrThrow({ where: { effectiveTo: { not: null }, deletedAt: null } })
+    expect(dateKey(cerrada.effectiveFrom)).toBe('2026-09-01')
+    expect(dateKey(cerrada.effectiveTo!)).toBe('2026-09-09') // el día previo al nuevo
+  })
+
+  it('config: una carga RETROACTIVA (antes del inicio del vigente) tampoco invierte el rango', async () => {
+    await setAbsentDeductionCents(prisma, 3_000_000n, D('2026-09-10'), ACTOR)
+    await expect(setAbsentDeductionCents(prisma, 2_000_000n, D('2026-09-01'), ACTOR)).resolves.toBe(true)
+
+    expect(await getAbsentDeductionCents(prisma)).toBe(2_000_000n)
+    expect(await prisma.payrollConfig.count({ where: { deletedAt: null } })).toBe(1)
+    const row = await prisma.payrollConfig.findFirstOrThrow({ where: { effectiveTo: null, deletedAt: null } })
+    expect(dateKey(row.effectiveFrom)).toBe('2026-09-01')
   })
 
   it('config del descuento: versionado, el vigente cambia y audita', async () => {
