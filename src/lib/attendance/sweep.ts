@@ -8,7 +8,7 @@ import {
 } from '@/lib/domain/attendance'
 import { DEFAULT_ATTENDANCE_CONFIG } from '@/lib/domain/attendance-config'
 import { SWEEP_DEFAULTS } from './config'
-import { planAttendance, executePlan, type ExistingRow, type Plan } from './persist'
+import { planAttendance, executePlan, executePlanBatch, type ExistingRow, type Plan } from './persist'
 import { dateKey, dowBA, listDateKeys, resolveScheduleInterval } from './timezone'
 
 export type Db = PrismaClient
@@ -248,23 +248,23 @@ export async function sweepAttendance(db: Db, params: SweepParams): Promise<Swee
     }
   }
 
-  // Fase de ejecución (I/O), en chunks -> transacciones acotadas. El chunk chico
-  // (lo pasa el cron) mantiene cada transacción en pocos statements; el `timeout`
-  // subido es el cinturón por si un chunk tarda más de lo previsto sobre el
-  // pooler. Juntos matan el bug #1 (transacción >5s -> 500). Ver config.ts.
+  // Fase de ejecución (I/O), en chunks -> transacciones acotadas. `executePlanBatch`
+  // batchea las ALTAS del lote con createMany (2 statements por lote, no 2 por
+  // fila); los update/delete van por fila. Con eso el costo de un backfill pasa
+  // a O(lotes) y entra holgado en maxDuration=60. El `timeout` subido es el
+  // cinturón. Juntos matan el bug #1 (transacción >5s -> 500). Ver config.ts.
   for (let i = 0; i < actionable.length; i += chunkSize) {
     const chunk = actionable.slice(i, i + chunkSize)
-    await db.$transaction(
-      async (tx) => {
-        for (const item of chunk) {
-          await executePlan(tx, item.plan, item.employeeId, item.workDate, actorId)
-          if (item.plan.action === 'create') summary.writes.created++
-          else if (item.plan.action === 'update') summary.writes.updated++
-          else if (item.plan.action === 'delete') summary.writes.deleted++
-        }
-      },
-      { maxWait: SWEEP_DEFAULTS.txTimeoutMs, timeout: SWEEP_DEFAULTS.txTimeoutMs },
-    )
+    await db.$transaction(async (tx) => executePlanBatch(tx, chunk, actorId), {
+      maxWait: SWEEP_DEFAULTS.txTimeoutMs,
+      timeout: SWEEP_DEFAULTS.txTimeoutMs,
+    })
+    // Conteo tras el commit (solo los que escriben; los noop no llegan acá).
+    for (const item of chunk) {
+      if (item.plan.action === 'create') summary.writes.created++
+      else if (item.plan.action === 'update') summary.writes.updated++
+      else if (item.plan.action === 'delete') summary.writes.deleted++
+    }
   }
 
   return summary
