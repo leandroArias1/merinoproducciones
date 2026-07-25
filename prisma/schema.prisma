@@ -67,6 +67,11 @@ model User {
   auditLogs         AuditLog[]
   editedTimeEntries TimeEntry[] @relation("TimeEntryEditor")
 
+  // Punteros de liquidación (quién cerró/pagó). ON DELETE SET NULL como audit.
+  closedPayrollPeriods PayrollPeriod[] @relation("PayrollPeriodClosedBy")
+  paidPayrollPeriods   PayrollPeriod[] @relation("PayrollPeriodPaidBy")
+  closedPayrollItems   PayrollItem[]   @relation("PayrollItemClosedBy")
+
   @@map("user")
 }
 
@@ -202,8 +207,9 @@ model Employee {
   attendances Attendance[]
   leaves      LeaveRequest[]
 
-  // ── PREVISTO (payroll, Fase 2): salaryHistory SalaryHistory[]  (sueldo en BigInt centavos)
-  // ── PREVISTO (payroll, Fase 2): payrollItems  PayrollItem[]
+  // Payroll (Fase 2): sueldo versionado + recibos.
+  salaryHistory SalaryHistory[]
+  payrollItems  PayrollItem[]
 
   createdAt DateTime  @default(now()) @db.Timestamptz
   updatedAt DateTime  @updatedAt @db.Timestamptz
@@ -524,4 +530,154 @@ model Holiday {
   updatedAt DateTime @updatedAt @db.Timestamptz
 
   @@map("holiday")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LIQUIDACIONES (Fase 2)
+// Sueldo mensual FIJO por categoría (750k L-V / 500k L-M), versionado POR
+// EMPLEADO. Descuento por día ABSENT. El cálculo vive en src/lib/domain/payroll.ts
+// (función pura). Plata SIEMPRE en centavos (BigInt), nunca float.
+//
+// Uniques de negocio (un solo vigente por empleado / global, un item por
+// empleado-período) van como índices PARCIALES en sql/07_payroll.sql, NO como
+// @@unique (Prisma no expresa parciales). Por eso: findFirst, nunca findUnique.
+// ═══════════════════════════════════════════════════════════════
+
+enum PayrollPeriodStatus {
+  OPEN
+  CLOSED
+  PAID
+}
+
+enum PayrollItemStatus {
+  DRAFT
+  READY
+  BLOCKED
+  CLOSED
+  PAID
+}
+
+enum PayrollLineKind {
+  BASE
+  DEDUCTION
+  ADJUSTMENT
+}
+
+/// Sueldo mensual por empleado, versionado (como WorkSchedule): el vigente es
+/// el de `effectiveTo = null`. Se siembra del default de la categoría pero vive
+/// por empleado (aumentos individuales + poder liquidar meses viejos).
+model SalaryHistory {
+  id            String    @id @default(cuid())
+  employeeId    String
+  monthlyCents  BigInt // sueldo mensual, en centavos
+  effectiveFrom DateTime  @db.Date
+  effectiveTo   DateTime? @db.Date // null = vigente
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  // UNIQUE parcial (employeeId) WHERE effectiveTo IS NULL AND deletedAt IS NULL
+  // en sql/07: garantiza UN solo sueldo vigente por empleado.
+  @@index([employeeId, effectiveFrom, effectiveTo])
+  @@map("salary_history")
+}
+
+/// Config global de liquidación, versionada. Un solo valor vigente (partial
+/// unique en sql/07). Hoy solo el descuento por falta.
+model PayrollConfig {
+  id                   String    @id @default(cuid())
+  absentDeductionCents BigInt // descuento por día ABSENT, en centavos
+  effectiveFrom        DateTime  @db.Date
+  effectiveTo          DateTime? @db.Date
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  // UNIQUE parcial global (una sola fila vigente) en sql/07.
+  @@map("payroll_config")
+}
+
+/// Período mensual. Contenedor de recibos. Se cierra cuando sus ítems INCLUIDOS
+/// están todos resueltos (los bloqueados se difieren; ver decisión 2).
+model PayrollPeriod {
+  id     String              @id @default(cuid())
+  year   Int
+  month  Int // 1..12
+  status PayrollPeriodStatus @default(OPEN)
+
+  closedAt   DateTime? @db.Timestamptz
+  closedById String? // puntero a user → SET NULL (como audit)
+  closedBy   User?     @relation("PayrollPeriodClosedBy", fields: [closedById], references: [id])
+  paidAt     DateTime? @db.Timestamptz
+  paidById   String?
+  paidBy     User?     @relation("PayrollPeriodPaidBy", fields: [paidById], references: [id])
+
+  items PayrollItem[]
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  // UNIQUE parcial (year, month) WHERE deletedAt IS NULL en sql/07.
+  @@index([closedById])
+  @@index([paidById])
+  @@index([status])
+  @@map("payroll_period")
+}
+
+/// Recibo por (empleado, período). El snapshot (base/deduction/net/absentDays)
+/// se CONGELA al pasar a CLOSED. Puede cerrarse individualmente (baja a mitad de
+/// mes) antes del cierre del período completo.
+model PayrollItem {
+  id         String            @id @default(cuid())
+  periodId   String
+  employeeId String
+  status     PayrollItemStatus @default(DRAFT)
+
+  // Snapshot del cálculo puro (src/lib/domain/payroll.ts). Congelado al CLOSED.
+  baseCents      BigInt @default(0)
+  deductionCents BigInt @default(0)
+  netCents       BigInt @default(0)
+  absentDays     Int    @default(0)
+
+  closedAt   DateTime? @db.Timestamptz
+  closedById String? // puntero a user → SET NULL
+  closedBy   User?     @relation("PayrollItemClosedBy", fields: [closedById], references: [id])
+
+  period   PayrollPeriod @relation(fields: [periodId], references: [id])
+  employee Employee      @relation(fields: [employeeId], references: [id])
+  lines    PayrollLine[]
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  // UNIQUE parcial (periodId, employeeId) WHERE deletedAt IS NULL en sql/07.
+  @@index([periodId])
+  @@index([employeeId])
+  @@index([closedById])
+  @@map("payroll_item")
+}
+
+/// Línea del recibo. DERIVADA: se regenera al (re)cerrar el ítem, sin soft
+/// delete (misma lógica que Attendance — dato derivado que se pisa). El registro
+/// INMUTABLE de cada cierre/pago vive en AuditLog (domain PAYROLL).
+model PayrollLine {
+  id          String          @id @default(cuid())
+  itemId      String
+  kind        PayrollLineKind
+  concept     String
+  amountCents BigInt // con signo: BASE/ADJUSTMENT +, DEDUCTION −
+  sortOrder   Int             @default(0)
+
+  item PayrollItem @relation(fields: [itemId], references: [id])
+
+  createdAt DateTime @default(now()) @db.Timestamptz
+
+  @@index([itemId])
+  @@map("payroll_line")
 }
