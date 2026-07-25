@@ -4,7 +4,7 @@ import { prisma } from '@/lib/db'
 import { cashBalance } from '@/lib/finance/profit'
 import { listMovements } from '@/lib/finance/queries'
 import { listParties } from '@/lib/finance/party'
-import { formatPesos } from '@/lib/payroll/format'
+import { formatPesos, fechaAR } from '@/components/format'
 import { NewExpenseForm } from '@/components/finance/new-expense-form'
 import { FinanceActionButton } from '@/components/finance/finance-action-button'
 import { FilterForm } from '@/components/shell/filter-form'
@@ -15,9 +15,6 @@ const CAT_LABELS: Record<string, string> = {
   EXPENSE_PAYMENT: 'Pago gasto',
   SALARY: 'Sueldos',
   OTHER: 'Otro',
-}
-function fmtDate(d: Date): string {
-  return d.toISOString().slice(0, 10)
 }
 
 export default async function CajaPage({ searchParams }: { searchParams: Promise<{ desde?: string; hasta?: string; tipo?: string }> }) {
@@ -112,7 +109,7 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
             <tbody className="divide-y">
               {movements.map((m) => (
                 <tr key={m.id} className="hover:bg-secondary/50">
-                  <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{fmtDate(m.occurredOn)}</td>
+                  <td className="num px-4 py-2.5 text-muted-foreground">{fechaAR(m.occurredOn)}</td>
                   <td className="px-4 py-2.5">
                     {m.concept}
                     <span className="ml-2 text-xs text-muted-foreground">{CAT_LABELS[m.category] ?? m.category}</span>
