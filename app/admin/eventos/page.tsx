@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { StatusBadge, eventTone } from '@/components/events/status-badge'
 import { MonthCalendar } from '@/components/events/month-calendar'
 import { cn } from '@/lib/utils'
+import { FilterForm } from '@/components/shell/filter-form'
 
 function ViewTab({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
   return (
@@ -86,7 +87,7 @@ export default async function EventosPage({
         </div>
       ) : (
         <>
-          <form method="get" className="mb-4 flex items-end gap-3">
+          <FilterForm className="mb-4 flex flex-wrap items-end gap-3">
             <input type="hidden" name="vista" value="lista" />
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Estado</label>
@@ -106,15 +107,15 @@ export default async function EventosPage({
             <Button type="submit" variant="secondary" size="sm">
               Filtrar
             </Button>
-          </form>
+          </FilterForm>
 
           {events.length === 0 ? (
             <div className="grid place-items-center rounded-lg border border-dashed py-16 text-center text-sm text-muted-foreground">
               No hay eventos con ese filtro.
             </div>
           ) : (
-            <div className="overflow-hidden rounded-lg border">
-              <table className="w-full text-sm">
+            <div className="overflow-x-auto rounded-lg border">
+              <table className="w-full min-w-[640px] text-sm">
                 <thead className="bg-secondary text-left text-xs uppercase tracking-wide text-muted-foreground">
                   <tr>
                     <th className="px-4 py-2.5 font-medium">Evento</th>

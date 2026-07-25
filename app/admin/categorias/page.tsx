@@ -29,8 +29,8 @@ export default async function CategoriasPage() {
           <p className="mt-1 text-xs text-muted-foreground">Creá la primera para asignarla a los empleados.</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-secondary text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-4 py-2.5 font-medium">Nombre</th>
