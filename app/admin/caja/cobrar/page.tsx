@@ -2,19 +2,17 @@ import Link from 'next/link'
 import { prisma } from '@/lib/db'
 import { listEventProfits } from '@/lib/finance/profit'
 import { totalReceivable } from '@/lib/finance/profit'
-import { listClientsWithStats } from '@/lib/finance/party'
-import { formatPesos } from '@/lib/payroll/format'
+import { listParties } from '@/lib/finance/party'
+import { formatPesos } from '@/components/format'
 import { PaymentForm } from '@/components/finance/payment-form'
 import { SetPriceForm } from '@/components/finance/set-price-form'
-import { PartyForm } from '@/components/finance/party-form'
-import { PartyList } from '@/components/finance/party-list'
 
 const pesos = (cents: bigint) => Number(cents) / 100 // solo para prellenar el form (input en pesos)
 
 export default async function CobrarPage() {
   const [events, clients, receivable] = await Promise.all([
     listEventProfits(prisma),
-    listClientsWithStats(prisma),
+    listParties(prisma, 'CLIENT'), // sólo para el selector de cliente del precio
     totalReceivable(prisma),
   ])
   const clientOpts = clients.map((c) => ({ id: c.id, name: c.name }))
@@ -23,23 +21,17 @@ export default async function CobrarPage() {
     <div>
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b pb-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Clientes y por cobrar</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Eventos por cobrar</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            <Link href="/admin/caja" className="hover:text-primary">← Caja</Link> · Total por cobrar: <span className="font-medium text-foreground">{formatPesos(receivable)}</span>
+            <Link href="/admin/caja" className="hover:text-primary">← Caja</Link> · Total por cobrar:{' '}
+            <span className="num font-medium text-foreground">{formatPesos(receivable)}</span>
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">{clients.length} cliente(s)</span>
-          <PartyForm kind="CLIENT" />
-        </div>
+        <Link href="/admin/clientes" prefetch={false} className="text-sm font-medium text-primary hover:underline">
+          Ver clientes →
+        </Link>
       </header>
 
-      <section className="mb-8">
-        <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Clientes</h2>
-        <PartyList rows={clients} kind="CLIENT" />
-      </section>
-
-      <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Eventos por cobrar</h2>
       {events.length === 0 ? (
         <div className="grid place-items-center rounded-lg border border-dashed py-16 text-center text-sm text-muted-foreground">No hay eventos.</div>
       ) : (

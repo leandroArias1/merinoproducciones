@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Menu, X, Home, Users, Clock, CalendarDays, ClipboardCheck, Wallet, Coins, BarChart3 } from 'lucide-react'
+import { Menu, X, Home, Users, Clock, CalendarDays, ClipboardCheck, Wallet, Coins, Contact, Truck, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { LogoutButton } from './logout-button'
 
@@ -16,8 +16,8 @@ import { LogoutButton } from './logout-button'
  * agrupación. Los grupos chicos mantienen cada bloque escaneable de un vistazo
  * aunque la lista total pase de siete ítems.
  *
- * "Clientes" y "Proveedores" entran en este menú cuando existan como pantallas
- * propias; hoy siguen dentro de Caja y nombrarlos acá sería mentir.
+ * "Clientes" y "Proveedores" son las agendas: ya existen como pantallas
+ * propias, separadas de las cuentas por cobrar/pagar que viven bajo Caja.
  */
 const NAV = [
   { title: null, items: [{ href: '/admin', label: 'Hoy', icon: Home }] },
@@ -35,6 +35,8 @@ const NAV = [
     title: 'Dinero',
     items: [
       { href: '/admin/caja', label: 'Caja', icon: Coins },
+      { href: '/admin/clientes', label: 'Clientes', icon: Contact },
+      { href: '/admin/proveedores', label: 'Proveedores', icon: Truck },
       { href: '/admin/reportes', label: 'Reportes', icon: BarChart3 },
     ],
   },

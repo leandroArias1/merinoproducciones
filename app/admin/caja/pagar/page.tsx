@@ -2,43 +2,29 @@ import Link from 'next/link'
 import { prisma } from '@/lib/db'
 import { listPayables } from '@/lib/finance/queries'
 import { totalPayable } from '@/lib/finance/profit'
-import { listProvidersWithStats } from '@/lib/finance/party'
-import { formatPesos } from '@/lib/payroll/format'
+import { formatPesos, fechaAR } from '@/components/format'
 import { FinanceActionButton } from '@/components/finance/finance-action-button'
-import { PartyForm } from '@/components/finance/party-form'
-import { PartyList } from '@/components/finance/party-list'
 
 const CAT_LABELS: Record<string, string> = { TRANSPORT: 'Transporte', EQUIPMENT: 'Equipos', VENUE: 'Lugar', SUPPLIES: 'Insumos', OTHER: 'Otro' }
-const fmtDate = (d: Date) => d.toISOString().slice(0, 10)
 
 export default async function PagarPage() {
-  const [payables, payable, providers] = await Promise.all([
-    listPayables(prisma),
-    totalPayable(prisma),
-    listProvidersWithStats(prisma),
-  ])
+  const [payables, payable] = await Promise.all([listPayables(prisma), totalPayable(prisma)])
 
   return (
     <div>
       <header className="mb-6 flex flex-wrap items-end justify-between gap-3 border-b pb-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Proveedores y por pagar</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Gastos por pagar</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            <Link href="/admin/caja" className="hover:text-primary">← Caja</Link> · Total por pagar: <span className="font-medium text-foreground">{formatPesos(payable)}</span>
+            <Link href="/admin/caja" className="hover:text-primary">← Caja</Link> · Total por pagar:{' '}
+            <span className="num font-medium text-foreground">{formatPesos(payable)}</span>
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">{providers.length} proveedor(es)</span>
-          <PartyForm kind="PROVIDER" />
-        </div>
+        <Link href="/admin/proveedores" prefetch={false} className="text-sm font-medium text-primary hover:underline">
+          Ver proveedores →
+        </Link>
       </header>
 
-      <section className="mb-8">
-        <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Proveedores</h2>
-        <PartyList rows={providers} kind="PROVIDER" />
-      </section>
-
-      <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Gastos por pagar</h2>
       {payables.length === 0 ? (
         <div className="grid place-items-center rounded-lg border border-dashed py-16 text-center">
           <p className="text-sm font-medium">No hay cuentas por pagar</p>
@@ -67,7 +53,7 @@ export default async function PagarPage() {
                   <td className="px-4 py-2.5 text-muted-foreground">{p.providerName ?? '—'}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{p.eventName ?? '—'}</td>
                   <td className="px-4 py-2.5 text-right font-semibold tabular-nums">{formatPesos(p.amountCents)}</td>
-                  <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{fmtDate(p.incurredOn)}</td>
+                  <td className="num px-4 py-2.5 text-muted-foreground">{fechaAR(p.incurredOn)}</td>
                   <td className="px-4 py-2.5 text-right">
                     <span className="inline-flex items-center gap-1.5">
                       <FinanceActionButton kind="pay" id={p.id} label="Pagar" confirm={`¿Pagar ${formatPesos(p.amountCents)}? Sale de caja ahora.`} />
