@@ -280,9 +280,14 @@ model Event {
   startAt DateTime @db.Timestamptz
   endAt   DateTime @db.Timestamptz
 
-  assignments EventAssignment[]
+  // Finanzas (Fase 3): el evento ES la cuenta por cobrar del cliente.
+  agreedCents BigInt? // precio pactado con el cliente, en centavos
+  clientId    String?
+  clientParty Party?  @relation("EventClient", fields: [clientId], references: [id], onDelete: Restrict)
 
-  // ── PREVISTO (finanzas, Fase 2): budgetCents BigInt? / income CashMovement[]
+  assignments   EventAssignment[]
+  expenses      Expense[]
+  cashMovements CashMovement[]
 
   createdAt DateTime  @default(now()) @db.Timestamptz
   updatedAt DateTime  @updatedAt @db.Timestamptz
@@ -290,6 +295,7 @@ model Event {
 
   @@index([status])
   @@index([startAt])
+  @@index([clientId])
   @@index([deletedAt])
   @@map("event")
 }
@@ -680,4 +686,119 @@ model PayrollLine {
 
   @@index([itemId])
   @@map("payroll_line")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CAJA / FINANZAS (Fase 3)
+// Caja de TOTAL ÚNICO (CashMovement). El evento es la cuenta por cobrar
+// (Event.agreedCents + clientId). Los gastos/deudas viven en Expense (PENDING =
+// cuenta por pagar; PAID = ya movió caja). Rentabilidad por evento sobre lo
+// PACTADO (ver src/lib/domain/finance.ts). Plata SIEMPRE en centavos (BigInt).
+//
+// onDelete: Restrict EXPLÍCITO en las FK opcionales (aunque Prisma derivaría
+// SET NULL por ser opcionales): así el diff NO genera drift y un DELETE físico
+// accidental falla ruidoso en vez de vaciar el vínculo en silencio.
+// ═══════════════════════════════════════════════════════════════
+
+enum PartyKind {
+  CLIENT
+  PROVIDER
+}
+
+enum ExpenseStatus {
+  PENDING // registrado, todavía no pagado (cuenta por pagar)
+  PAID
+}
+
+enum ExpenseCategory {
+  TRANSPORT
+  EQUIPMENT
+  VENUE
+  SUPPLIES
+  OTHER
+}
+
+enum CashDirection {
+  INCOME
+  EXPENSE
+}
+
+enum CashCategory {
+  CLIENT_PAYMENT // ingreso: pago de un cliente (abona la cuenta del evento)
+  EXPENSE_PAYMENT // egreso: paga un Expense
+  SALARY // egreso: sueldos cargados a mano (NO se imputan a eventos)
+  OTHER
+}
+
+/// Clientes y proveedores. Una tabla con `kind`.
+model Party {
+  id    String    @id @default(cuid())
+  name  String
+  kind  PartyKind
+  notes String?
+
+  clientEvents Event[]   @relation("EventClient") // eventos donde es cliente
+  expenses     Expense[] // gastos donde es proveedor
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  // UNIQUE parcial (name, kind) WHERE deletedAt IS NULL en sql/09.
+  @@index([kind])
+  @@index([deletedAt])
+  @@map("party")
+}
+
+/// Gasto / cuenta por pagar. Unidad de COSTO. PENDING = debe; PAID = ya movió caja.
+model Expense {
+  id          String          @id @default(cuid())
+  description String
+  amountCents BigInt // en centavos
+  incurredOn  DateTime        @db.Date
+  category    ExpenseCategory @default(OTHER)
+  status      ExpenseStatus   @default(PENDING)
+
+  providerId String?
+  provider   Party?  @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  eventId    String? // imputación a la rentabilidad del evento
+  event      Event?  @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  payments CashMovement[] // los movimientos de caja que lo saldan
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([providerId])
+  @@index([eventId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("expense")
+}
+
+/// Libro de caja de TOTAL ÚNICO. Cada fila MUEVE plata. saldo = Σ INCOME − Σ EXPENSE.
+model CashMovement {
+  id          String        @id @default(cuid())
+  direction   CashDirection
+  amountCents BigInt // siempre positivo; el signo lo da `direction`
+  occurredOn  DateTime      @db.Date
+  category    CashCategory  @default(OTHER)
+  note        String?
+
+  eventId   String? // ingreso de cliente: a qué evento abona
+  event     Event?   @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  expenseId String? // egreso: qué Expense salda
+  expense   Expense? @relation(fields: [expenseId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime  @default(now()) @db.Timestamptz
+  updatedAt DateTime  @updatedAt @db.Timestamptz
+  deletedAt DateTime? @db.Timestamptz
+
+  @@index([eventId])
+  @@index([expenseId])
+  @@index([occurredOn])
+  @@index([direction])
+  @@index([deletedAt])
+  @@map("cash_movement")
 }
