@@ -18,13 +18,15 @@ export const SWEEP_DEFAULTS = {
    */
   chunkSize: 100,
   /**
-   * Chunk EFECTIVO del cron en producción (pooler de Supabase, ~500ms/op).
-   * Chico A PROPÓSITO: cada transacción hace pocos statements y entra muy por
-   * debajo del timeout interactivo de Prisma (5s default, acá subido a 20s).
-   * Era el bug #1: con 100, una sola transacción de ~200 statements sobre el
-   * pooler superaba los 5s y el cron devolvía 500. Ver route.ts y sweep.ts.
+   * Chunk EFECTIVO del cron en producción. Con `executePlanBatch` las ALTAS del
+   * lote se insertan con createMany (2 statements por lote), así que un lote más
+   * grande sigue siendo barato en el caso dominante (backfill = casi todo altas).
+   * Se acota a 25 para que el PEOR caso —un lote de 25 update/delete por fila,
+   * ~50 statements ≈ 7s sobre el pooler a 145ms/statement— quede bien bajo el
+   * timeout de 20s. Antes era 5 (con el path fila-por-fila, pre-createMany).
+   * Medición prod que motivó todo esto: 109 altas fila-por-fila = 33s.
    */
-  cronChunkSize: 5,
+  cronChunkSize: 25,
   /**
    * Timeout (ms) de cada transacción de chunk. Cinturón por si un chunk tarda
    * más de lo esperado sobre el pooler; muy por encima del default de 5s.

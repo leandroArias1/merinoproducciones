@@ -227,6 +227,61 @@ export async function executePlan(
   await writeAudit(tx, plan.audit, entityId, actorId)
 }
 
+/**
+ * Ejecuta un CONJUNTO de planes batcheando el path CREATE con `createMany`:
+ * todas las altas de un lote se insertan en 2 statements (attendance + auditLog)
+ * en vez de 2 por fila. Los update/delete siguen por fila (son raros en régimen
+ * nocturno). NO toca la capa de decisión (`planAttendance`): recibe planes ya
+ * decididos. El entityId del audit se deriva de employeeId+workDate, así que no
+ * hace falta el id devuelto por el insert (por eso `createMany` alcanza).
+ *
+ * Motivo: sobre el pooler (~145ms/statement medido en prod) el path fila-por-
+ * fila hacía que un backfill de ~13 empleados rozara el maxDuration=60 de
+ * Vercel. Con createMany el costo de las altas pasa a O(lotes), no O(filas).
+ */
+export async function executePlanBatch(
+  tx: Tx,
+  items: Array<{ plan: Plan; employeeId: string; workDate: Date }>,
+  actorId: string | null,
+): Promise<void> {
+  const attData: Prisma.AttendanceCreateManyInput[] = []
+  const auditData: Prisma.AuditLogCreateManyInput[] = []
+
+  for (const it of items) {
+    if (it.plan.action !== 'create') continue
+    attData.push({
+      employeeId: it.employeeId,
+      workDate: it.workDate,
+      status: it.plan.create.status as AttendanceStatus,
+      source: it.plan.create.source as PrismaAttendanceSource,
+      workedMinutes: it.plan.create.workedMinutes,
+      expectedMinutes: it.plan.create.expectedMinutes,
+      warnings: it.plan.create.warnings,
+    })
+    auditData.push({
+      domain: 'ATTENDANCE',
+      action: it.plan.audit.action,
+      entityType: 'Attendance',
+      entityId: `${it.employeeId}:${dateKey(it.workDate)}`,
+      before: it.plan.audit.before === null ? Prisma.DbNull : (it.plan.audit.before as unknown as Prisma.InputJsonValue),
+      after: it.plan.audit.after === null ? Prisma.DbNull : (it.plan.audit.after as unknown as Prisma.InputJsonValue),
+      actorId,
+    })
+  }
+
+  if (attData.length > 0) {
+    await tx.attendance.createMany({ data: attData })
+    await tx.auditLog.createMany({ data: auditData })
+  }
+
+  // update/delete: por fila (reusa executePlan). Los noop se filtran antes.
+  for (const it of items) {
+    if (it.plan.action === 'update' || it.plan.action === 'delete') {
+      await executePlan(tx, it.plan, it.employeeId, it.workDate, actorId)
+    }
+  }
+}
+
 async function writeAudit(
   tx: Tx,
   audit: AuditPayload,

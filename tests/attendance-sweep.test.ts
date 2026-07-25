@@ -173,6 +173,52 @@ describe('barrido con ventana móvil', () => {
     expect(s2.writes).toEqual({ created: 0, updated: 0, deleted: 0, noop: 35 })
   })
 
+  it('createMany: 200+ altas se escriben todas con statements ACOTADOS (holgado bajo 60s)', async () => {
+    const F = '2026-09-01'
+    const T = '2027-04-01' // ~213 días
+    const wide = { from: workDateFromKey(F), to: workDateFromKey(T), chunkSize: 25 }
+
+    const emp = await makeEmployee()
+    for (let dow = 0; dow < 7; dow++) {
+      await prisma.workSchedule.create({
+        data: { employeeId: emp.id, dayOfWeek: dow, startMinute: 540, endMinute: 1020, effectiveFrom: workDateFromKey('2026-01-01') },
+      })
+    }
+
+    // Cuenta operaciones Prisma por modelo+operación.
+    const counts = { create: 0, createMany: 0, total: 0 }
+    const counting = prisma.$extends({
+      query: {
+        $allModels: {
+          async $allOperations({ model, operation, args, query }) {
+            counts.total++
+            if (model === 'Attendance' && operation === 'create') counts.create++
+            if (model === 'Attendance' && operation === 'createMany') counts.createMany++
+            return query(args)
+          },
+        },
+      },
+    }) as unknown as PrismaClient
+
+    const s = await sweepAttendance(counting, wide)
+
+    expect(s.writes.created).toBeGreaterThanOrEqual(200)
+    expect(s.writes.created).toBe(s.days) // todos los días son alta (ABSENT sin fichada)
+    expect(await prisma.attendance.count({ where: { employeeId: emp.id } })).toBe(s.days)
+
+    // La clave del arreglo: NINGUNA alta fila-por-fila; todo por createMany.
+    expect(counts.create).toBe(0)
+    expect(counts.createMany).toBeGreaterThan(0)
+    // Statements ACOTADOS: O(lotes), no O(filas). ~213 altas / chunk 25 ≈ 9 lotes
+    // => ~9 createMany(att) + 9 createMany(audit) + ~7 lecturas ≈ 25 ops. Muy por
+    // debajo de 2*213=426 del path viejo. A ~145ms/statement en prod ≈ ~5s (<<60s).
+    expect(counts.total).toBeLessThan(40)
+
+    // Idempotente a volumen: 2da corrida no reescribe nada.
+    const s2 = await sweepAttendance(prisma, wide)
+    expect(s2.writes).toEqual({ created: 0, updated: 0, deleted: 0, noop: s2.days })
+  })
+
   it('sin N+1: el barrido no-op no escala en queries con la cantidad de empleados', async () => {
     // Helper: cuenta operaciones Prisma vía extensión.
     let ops = 0
