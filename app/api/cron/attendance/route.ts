@@ -25,11 +25,18 @@ export async function GET(req: Request): Promise<Response> {
     .minus({ days: SWEEP_DEFAULTS.windowDays - 1 })
     .toISODate() as string
 
+  const startedAt = Date.now()
   const summary = await sweepAttendance(prisma, {
     from: workDateFromKey(fromKey),
     to: workDateFromKey(todayKey),
+    // Chunk chico A PROPÓSITO (bug #1): cada transacción queda en pocos
+    // statements y no revienta el timeout sobre el pooler. Ver config.ts.
+    chunkSize: SWEEP_DEFAULTS.cronChunkSize,
     // actorId omitido -> null: lo dispara el sistema, no un usuario.
   })
+  const elapsedMs = Date.now() - startedAt
 
-  return Response.json({ ok: true, ...summary })
+  // `elapsedMs` queda en la respuesta a propósito: es la medición real contra el
+  // pooler para decidir si el barrido entra holgado en maxDuration=60 de Vercel.
+  return Response.json({ ok: true, elapsedMs, ...summary })
 }

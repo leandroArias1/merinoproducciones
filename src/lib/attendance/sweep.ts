@@ -248,17 +248,23 @@ export async function sweepAttendance(db: Db, params: SweepParams): Promise<Swee
     }
   }
 
-  // Fase de ejecución (I/O), en chunks -> transacciones acotadas (timeout Vercel).
+  // Fase de ejecución (I/O), en chunks -> transacciones acotadas. El chunk chico
+  // (lo pasa el cron) mantiene cada transacción en pocos statements; el `timeout`
+  // subido es el cinturón por si un chunk tarda más de lo previsto sobre el
+  // pooler. Juntos matan el bug #1 (transacción >5s -> 500). Ver config.ts.
   for (let i = 0; i < actionable.length; i += chunkSize) {
     const chunk = actionable.slice(i, i + chunkSize)
-    await db.$transaction(async (tx) => {
-      for (const item of chunk) {
-        await executePlan(tx, item.plan, item.employeeId, item.workDate, actorId)
-        if (item.plan.action === 'create') summary.writes.created++
-        else if (item.plan.action === 'update') summary.writes.updated++
-        else if (item.plan.action === 'delete') summary.writes.deleted++
-      }
-    })
+    await db.$transaction(
+      async (tx) => {
+        for (const item of chunk) {
+          await executePlan(tx, item.plan, item.employeeId, item.workDate, actorId)
+          if (item.plan.action === 'create') summary.writes.created++
+          else if (item.plan.action === 'update') summary.writes.updated++
+          else if (item.plan.action === 'delete') summary.writes.deleted++
+        }
+      },
+      { maxWait: SWEEP_DEFAULTS.txTimeoutMs, timeout: SWEEP_DEFAULTS.txTimeoutMs },
+    )
   }
 
   return summary

@@ -138,6 +138,41 @@ describe('barrido con ventana móvil', () => {
     expect(audits2).toBe(audits1) // ni un AuditLog nuevo
   })
 
+  it('REGRESIÓN bug #1: barrido con MUCHOS días accionables (35) termina OK y escribe todo, con chunk chico', async () => {
+    // Ventana ancha de 35 días.
+    const F = '2026-09-01'
+    const T = '2026-10-05'
+    const wide = { from: workDateFromKey(F), to: workDateFromKey(T), chunkSize: 5 }
+
+    // Empleado que trabaja TODOS los días (un WorkSchedule por día de la semana)
+    // => cada día de la ventana es accionable (ABSENT sin fichada).
+    const emp = await makeEmployee()
+    for (let dow = 0; dow < 7; dow++) {
+      await prisma.workSchedule.create({
+        data: {
+          employeeId: emp.id,
+          dayOfWeek: dow,
+          startMinute: 540,
+          endMinute: 1020,
+          effectiveFrom: workDateFromKey('2026-01-01'),
+        },
+      })
+    }
+
+    // Con chunkSize 5 y 35 días => 7 transacciones. Antes del arreglo, todo caía
+    // en UNA transacción y sobre el pooler reventaba el timeout (bug #1).
+    const s = await sweepAttendance(prisma, wide)
+
+    expect(s.days).toBe(35)
+    expect(s.writes.created).toBe(35) // escribió TODOS
+    const count = await prisma.attendance.count({ where: { employeeId: emp.id } })
+    expect(count).toBe(35)
+
+    // Idempotente incluso en volumen: segunda corrida no reescribe nada.
+    const s2 = await sweepAttendance(prisma, wide)
+    expect(s2.writes).toEqual({ created: 0, updated: 0, deleted: 0, noop: 35 })
+  })
+
   it('sin N+1: el barrido no-op no escala en queries con la cantidad de empleados', async () => {
     // Helper: cuenta operaciones Prisma vía extensión.
     let ops = 0
