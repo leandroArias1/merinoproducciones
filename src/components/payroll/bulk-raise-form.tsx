@@ -106,12 +106,12 @@ export function BulkRaiseForm({ employees }: { employees: RaiseEmployeeVM[] }) {
           <p className="rounded-md bg-paper px-3 py-2 text-xs text-muted-foreground">
             {efecto.completo ? (
               <>
-                En <span className="capitalize">{efecto.mesLabel}</span> cobran el{' '}
+                En <span className="first-letter:uppercase">{efecto.mesLabel}</span> cobran el{' '}
                 <b className="text-foreground">sueldo completo</b>, porque rige desde el primer día del mes.
               </>
             ) : (
               <>
-                Ojo: en <span className="capitalize">{efecto.mesLabel}</span> se prorratea. Cobran{' '}
+                Ojo: en <span className="first-letter:uppercase">{efecto.mesLabel}</span> se prorratea. Cobran{' '}
                 <b className="num text-foreground">$ {efecto.cobra.toLocaleString('es-AR')}</b> de{' '}
                 <span className="num">$ {monto.toLocaleString('es-AR')}</span>, por {efecto.diasVigentes} de{' '}
                 {efecto.diasDelMes} días. Elegí el día 1 para el mes completo.
