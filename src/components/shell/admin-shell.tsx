@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Menu, X, LayoutDashboard, Users, Tags, CalendarDays, ClipboardCheck, BarChart3 } from 'lucide-react'
+import { Menu, X, LayoutDashboard, Users, Tags, CalendarDays, ClipboardCheck, Wallet, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { LogoutButton } from './logout-button'
 
@@ -13,6 +13,7 @@ const NAV = [
   { href: '/admin/categorias', label: 'Categorías', icon: Tags },
   { href: '/admin/eventos', label: 'Eventos', icon: CalendarDays },
   { href: '/admin/asistencia', label: 'Asistencia', icon: ClipboardCheck },
+  { href: '/admin/liquidaciones', label: 'Liquidaciones', icon: Wallet },
   { href: '/admin/reportes', label: 'Reportes', icon: BarChart3 },
 ] as const
 

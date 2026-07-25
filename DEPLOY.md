@@ -42,9 +42,27 @@ sql/03_better_auth.sql     # session, account, verification + user.image
 sql/04_attendance.sql      # enum INCOMPLETE/UNVERIFIED + attendance.warnings
 sql/05_holidays.sql        # tabla holiday
 sql/06_timeentry_location.sql  # columnas de ubicación en time_entry
+sql/07_payroll.sql         # LIQUIDACIONES: salary_history, payroll_config/period/item/line
+sql/08_search_unaccent.sql # extensión unaccent + pg_trgm + índices del buscador
 ```
 
 Cada archivo va entre `BEGIN;` / `COMMIT;`.
+
+> **`sql/07_payroll.sql` (Fase 2):** crea las 5 tablas de liquidaciones + sus
+> índices únicos PARCIALES (un sueldo/config vigente, un item por empleado-mes) +
+> CHECKs. Los `ON DELETE` salen correctos del propio `migrate diff` (RESTRICT en
+> las FK de negocio, SET NULL en los punteros a `user`): **no agrega drift**.
+>
+> **`sql/08_search_unaccent.sql`:** agrega las extensiones `unaccent` y `pg_trgm`,
+> la función `f_unaccent()` y dos índices GIN trigram sobre `employee`. Habilita
+> el buscador de empleados acento-insensible. **La app lo usa en `listEmployees`:
+> si el `08` no está aplicado, la búsqueda de empleados tira error.** Supabase trae
+> las dos extensiones; se crean con `CREATE EXTENSION IF NOT EXISTS`.
+
+> ⚠️ **ORDEN CON EL DEPLOY (Fase 2):** aplicá `07` y `08` en Supabase **ANTES** de
+> deployar el código de payroll. Si el deploy llega primero, `/admin/liquidaciones`
+> y el buscador de `/admin/empleados` tiran error (tablas/función faltantes). El
+> resto de la app sigue andando.
 
 > ⚠️ **Después de `02_timezone.sql`: RECONECTAR.** El `ALTER DATABASE SET
 > timezone` solo aplica a **sesiones nuevas**. La sesión del SQL Editor que ya
@@ -154,7 +172,8 @@ volvé a verificar con `pnpm db:drift`. NUNCA edites un archivo `sql/` viejo.
 ## 7. Checklist previo a producción
 
 - [ ] Todas las variables de la sección 1 seteadas en Vercel.
-- [ ] SQL `00`→`06` aplicados en orden; reconectado tras el `02`.
+- [ ] SQL `00`→`08` aplicados en orden; reconectado tras el `02`. (Fase 2:
+      `07` y `08` van ANTES del deploy de payroll.)
 - [ ] `SHOW timezone;` devuelve `UTC`.
 - [ ] `pnpm db:drift` coincide con `sql/EXPECTED_DRIFT.md`.
 - [ ] `pnpm db:seed:prod` corrido; admin logueado y password cambiada.

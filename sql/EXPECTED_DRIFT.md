@@ -122,6 +122,34 @@ es drift real.
 
 ---
 
+## Liquidaciones (sql/07) — NO agrega drift
+
+`sql/07_payroll.sql` crea 5 tablas (`salary_history`, `payroll_config`,
+`payroll_period`, `payroll_item`, `payroll_line`) + 3 enums de estado. **El
+baseline sigue en los mismos 7 statements** — ni uno más. Verificado: el DDL se
+generó desde el propio `migrate diff`, y sus `ON DELETE` coinciden con lo que
+Prisma deriva (RESTRICT en las FK de negocio, SET NULL en los punteros a `user`:
+`closedById`/`paidById`), así que no hay override que corregir a mano.
+
+Lo que el diff NO ve (a propósito, igual que en Fase 1):
+- **Los 4 índices únicos PARCIALES** del 07 (`salary_history_vigente_uq`,
+  `payroll_config_vigente_uq`, `payroll_period_yearmonth_uq`,
+  `payroll_item_period_employee_uq`). NO se declaran como `@@unique` en el schema
+  (Prisma no expresa parciales), así que el diff ni los propone ni los renombra.
+  Por eso el código usa `findFirst`, nunca `findUnique`, sobre esas claves.
+- **Los CHECK del 07** (mes 1..12, montos ≥ 0, effectiveTo ≥ effectiveFrom):
+  `migrate diff` ignora los CHECK por completo.
+
+## Búsqueda unaccent (sql/08) — NO agrega drift
+
+`sql/08_search_unaccent.sql` agrega las extensiones `unaccent` y `pg_trgm`, la
+función `f_unaccent()` y dos índices GIN trigram sobre `employee`. **Nada de eso
+existe en el schema de Prisma** (son objetos de DB puros), así que el diff no los
+ve y el baseline no cambia. Si el diff empezara a proponer DROP de esos índices o
+la función, es que alguien tocó el schema para intentar representarlos.
+
+---
+
 ## Lo que NO aparece en el diff (y no es que falte)
 
 - **Los 10 CHECK constraints** de `01_indexes.sql`. `migrate diff` los ignora
