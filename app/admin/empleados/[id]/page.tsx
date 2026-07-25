@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { Pencil } from 'lucide-react'
 import { prisma } from '@/lib/db'
+import { fechaAR } from '@/components/format'
 import { getEmployee } from '@/lib/employees/employees'
 import { getEmployeeAccess } from '@/lib/users/access'
 import { EMPLOYMENT_TYPE_LABELS } from '@/lib/employees/schema'
@@ -12,7 +13,7 @@ import { DeleteEmployeeButton } from '@/components/employees/delete-employee-but
 import { EmployeeAccessPanel } from '@/components/employees/employee-access-panel'
 
 function fmtDate(d: Date | null): string {
-  return d ? d.toISOString().slice(0, 10) : '—'
+  return d ? fechaAR(d) : "—"
 }
 
 export default async function EmpleadoDetallePage({ params }: { params: Promise<{ id: string }> }) {
