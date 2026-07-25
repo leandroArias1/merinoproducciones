@@ -9,20 +9,8 @@ import { minutesToHHMM } from '@/lib/employees/format'
 import { StatusBadge } from '@/components/events/status-badge'
 import { DayCorrections } from '@/components/attendance/day-corrections'
 import { cn } from '@/lib/utils'
-
-const STATUS_LABELS: Record<string, string> = {
-  PRESENT: 'Presente',
-  ABSENT: 'Ausente',
-  LATE: 'Tarde',
-  JUSTIFIED: 'Justificado',
-  ON_LEAVE: 'Licencia',
-  HOLIDAY: 'Feriado',
-  INCOMPLETE: 'Incompleto',
-  UNVERIFIED: 'Sin verificar',
-}
-function statusTone(s: string | null) {
-  return s === 'PRESENT' ? 'success' : s === 'UNVERIFIED' || s === 'INCOMPLETE' ? 'danger' : s === 'ABSENT' ? 'danger' : 'muted'
-}
+import { FilterForm } from '@/components/shell/filter-form'
+import { ATTENDANCE_STATUS_LABELS as STATUS_LABELS, statusLabel, statusTone, warningLabel } from '@/lib/attendance/labels'
 
 function Tab({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
   return (
@@ -94,7 +82,7 @@ async function DayView({
 
   return (
     <>
-      <form method="get" className="mb-4 flex flex-wrap items-end gap-3">
+      <FilterForm className="mb-4 flex flex-wrap items-end gap-3">
         <input type="hidden" name="vista" value="dia" />
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Fecha</label>
@@ -125,15 +113,15 @@ async function DayView({
         <button type="submit" className="h-9 rounded-md border px-3 text-sm hover:bg-secondary">
           Filtrar
         </button>
-      </form>
+      </FilterForm>
 
       {rows.length === 0 ? (
         <div className="grid place-items-center rounded-lg border border-dashed py-16 text-center text-sm text-muted-foreground">
           No hay asistencia registrada ese día.
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-secondary text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-4 py-2.5 font-medium">Empleado</th>
@@ -157,11 +145,17 @@ async function DayView({
                   </td>
                   <td className="px-4 py-2.5 tabular-nums">{minutesToHHMM(r.workedMinutes)}</td>
                   <td className="px-4 py-2.5">
-                    <StatusBadge label={STATUS_LABELS[r.status ?? ''] ?? r.status ?? '—'} tone={statusTone(r.status)} />
-                    {r.source === 'MANUAL' && <span className="ml-1 text-[10px] uppercase text-muted-foreground">manual</span>}
+                    <div className="flex items-center gap-1.5">
+                      <StatusBadge label={statusLabel(r.status)} tone={statusTone(r.status)} />
+                      {r.source === 'MANUAL' && (
+                        <span className="rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                          manual
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="px-4 py-2.5 text-xs text-[var(--warning)]">
-                    {r.warnings.length > 0 ? r.warnings.join(', ') : '—'}
+                    {r.warnings.length > 0 ? r.warnings.map(warningLabel).join(', ') : '—'}
                   </td>
                   <td className="px-4 py-2.5">
                     <DayCorrections
@@ -192,8 +186,8 @@ async function ReviewView() {
       <p className="mt-1 text-xs text-muted-foreground">La liquidación puede cerrar sin trabas.</p>
     </div>
   ) : (
-    <div className="overflow-hidden rounded-lg border">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto rounded-lg border">
+      <table className="w-full min-w-[720px] text-sm">
         <thead className="bg-secondary text-left text-xs uppercase tracking-wide text-muted-foreground">
           <tr>
             <th className="px-4 py-2.5 font-medium">Empleado</th>
@@ -209,12 +203,12 @@ async function ReviewView() {
               <td className="px-4 py-2.5 font-medium">{r.employeeName}</td>
               <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{r.workDateKey}</td>
               <td className="px-4 py-2.5">
-                <StatusBadge label={STATUS_LABELS[r.status ?? ''] ?? r.status ?? '—'} tone={statusTone(r.status)} />
+                <StatusBadge label={statusLabel(r.status)} tone={statusTone(r.status)} />
               </td>
               <td className="px-4 py-2.5 text-xs text-[var(--warning)]">
                 <span className="inline-flex items-center gap-1 [&_svg]:size-3.5">
                   {r.warnings.length > 0 && <AlertTriangle />}
-                  {r.warnings.join(', ') || '—'}
+                  {r.warnings.map(warningLabel).join(', ') || '—'}
                 </span>
               </td>
               <td className="px-4 py-2.5 text-right">

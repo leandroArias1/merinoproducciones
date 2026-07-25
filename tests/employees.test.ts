@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 import { prisma } from '@/lib/db'
 import { ActionError } from '@/lib/auth/action'
 import { createCategory } from '@/lib/employees/categories'
-import { createEmployee, updateEmployee, softDeleteEmployee } from '@/lib/employees/employees'
+import { createEmployee, updateEmployee, softDeleteEmployee, listEmployees } from '@/lib/employees/employees'
 import { recalculate, workDateFromKey, dowBA } from '@/lib/attendance'
 import type { EmployeeInput } from '@/lib/employees/schema'
 
@@ -197,5 +197,32 @@ describe('categoría: turno partido bloqueado por schema (zod)', () => {
       ],
     })
     expect(parsed.success).toBe(false)
+  })
+})
+
+describe('listEmployees: búsqueda por nombre/DNI (server-side)', () => {
+  beforeEach(async () => {
+    await createEmployee(prisma, emp({ firstName: 'Rocío', lastName: 'Álvarez', documentId: '30111222' }), ACTOR)
+    await createEmployee(prisma, emp({ firstName: 'Nahuel', lastName: 'Benítez', documentId: '30222333' }), ACTOR)
+  })
+
+  it('filtra por apellido (case-insensitive)', async () => {
+    // Substring case-insensitive (ILIKE). Nota: acento-sensible ('ben' matchea
+    // 'Benítez' pero 'benitez' no; folding de acentos quedaría para unaccent).
+    const { rows } = await listEmployees(prisma, { page: 1, pageSize: 10, search: 'BEN' })
+    expect(rows).toHaveLength(1)
+    expect(rows[0].lastName).toBe('Benítez')
+  })
+
+  it('filtra por DNI parcial', async () => {
+    const { rows } = await listEmployees(prisma, { page: 1, pageSize: 10, search: '30111' })
+    expect(rows).toHaveLength(1)
+    expect(rows[0].documentId).toBe('30111222')
+  })
+
+  it('sin coincidencias devuelve vacío; combinable con estado', async () => {
+    expect((await listEmployees(prisma, { page: 1, pageSize: 10, search: 'zzz' })).rows).toHaveLength(0)
+    const { rows } = await listEmployees(prisma, { page: 1, pageSize: 10, search: 'rocío', status: 'inactive' })
+    expect(rows).toHaveLength(0) // Rocío está activa
   })
 })

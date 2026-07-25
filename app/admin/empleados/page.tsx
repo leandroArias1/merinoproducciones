@@ -5,6 +5,7 @@ import { listEmployees, type EmployeeStatusFilter } from '@/lib/employees/employ
 import { listCategories } from '@/lib/employees/categories'
 import { EMPLOYMENT_TYPE_LABELS } from '@/lib/employees/schema'
 import { Button } from '@/components/ui/button'
+import { FilterForm } from '@/components/shell/filter-form'
 
 const PAGE_SIZE = 10
 
@@ -15,19 +16,26 @@ function buildQuery(base: Record<string, string | undefined>): string {
   return s ? `?${s}` : ''
 }
 
+const ESTADO_NOUN: Record<EmployeeStatusFilter, string> = {
+  all: 'empleado(s)',
+  active: 'activo(s)',
+  inactive: 'inactivo(s)',
+}
+
 export default async function EmpleadosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; categoria?: string; estado?: string }>
+  searchParams: Promise<{ page?: string; categoria?: string; estado?: string; q?: string }>
 }) {
   const sp = await searchParams
   const page = Math.max(1, Number(sp.page) || 1)
   const categoria = sp.categoria || undefined
   const estado = (['active', 'inactive'].includes(sp.estado ?? '') ? sp.estado : 'all') as EmployeeStatusFilter
+  const q = sp.q?.trim() || undefined
 
   const [categories, { rows, total }] = await Promise.all([
     listCategories(prisma),
-    listEmployees(prisma, { page, pageSize: PAGE_SIZE, categoryId: categoria, status: estado }),
+    listEmployees(prisma, { page, pageSize: PAGE_SIZE, categoryId: categoria, status: estado, search: q }),
   ])
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
@@ -36,7 +44,9 @@ export default async function EmpleadosPage({
       <header className="mb-6 flex items-end justify-between border-b pb-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Empleados</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{total} activo(s) según el filtro.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {total} {ESTADO_NOUN[estado]} según el filtro.
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Link href="/admin/empleados/importar">
@@ -52,7 +62,17 @@ export default async function EmpleadosPage({
         </div>
       </header>
 
-      <form method="get" className="mb-4 flex flex-wrap items-end gap-3">
+      <FilterForm className="mb-4 flex flex-wrap items-end gap-3">
+        <div className="space-y-1">
+          <label className="text-xs font-medium text-muted-foreground">Buscar</label>
+          <input
+            type="search"
+            name="q"
+            defaultValue={q ?? ''}
+            placeholder="Nombre o DNI"
+            className="h-9 w-48 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-primary"
+          />
+        </div>
         <div className="space-y-1">
           <label className="text-xs font-medium text-muted-foreground">Categoría</label>
           <select
@@ -83,15 +103,15 @@ export default async function EmpleadosPage({
         <Button type="submit" variant="secondary" size="sm">
           Filtrar
         </Button>
-      </form>
+      </FilterForm>
 
       {rows.length === 0 ? (
         <div className="grid place-items-center rounded-lg border border-dashed py-16 text-center">
           <p className="text-sm font-medium">No hay empleados con ese filtro</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[640px] text-sm">
             <thead className="bg-secondary text-left text-xs uppercase tracking-wide text-muted-foreground">
               <tr>
                 <th className="px-4 py-2.5 font-medium">Empleado</th>
@@ -140,10 +160,10 @@ export default async function EmpleadosPage({
             Página {page} de {pages}
           </span>
           <div className="flex gap-2">
-            <PageLink disabled={page <= 1} href={`/admin/empleados${buildQuery({ categoria, estado, page: String(page - 1) })}`}>
+            <PageLink disabled={page <= 1} href={`/admin/empleados${buildQuery({ categoria, estado, q, page: String(page - 1) })}`}>
               Anterior
             </PageLink>
-            <PageLink disabled={page >= pages} href={`/admin/empleados${buildQuery({ categoria, estado, page: String(page + 1) })}`}>
+            <PageLink disabled={page >= pages} href={`/admin/empleados${buildQuery({ categoria, estado, q, page: String(page + 1) })}`}>
               Siguiente
             </PageLink>
           </div>

@@ -3,11 +3,13 @@ import { notFound } from 'next/navigation'
 import { Pencil } from 'lucide-react'
 import { prisma } from '@/lib/db'
 import { getEmployee } from '@/lib/employees/employees'
+import { getEmployeeAccess } from '@/lib/users/access'
 import { EMPLOYMENT_TYPE_LABELS } from '@/lib/employees/schema'
 import { minutesToHHMM } from '@/lib/employees/format'
 import { DAY_LABELS } from '@/lib/employees/schema'
 import { Button } from '@/components/ui/button'
 import { DeleteEmployeeButton } from '@/components/employees/delete-employee-button'
+import { EmployeeAccessPanel } from '@/components/employees/employee-access-panel'
 
 function fmtDate(d: Date | null): string {
   return d ? d.toISOString().slice(0, 10) : '—'
@@ -15,8 +17,11 @@ function fmtDate(d: Date | null): string {
 
 export default async function EmpleadoDetallePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const e = await getEmployee(prisma, id)
+  const [e, access] = await Promise.all([getEmployee(prisma, id), getEmployeeAccess(prisma, id)])
   if (!e) notFound()
+
+  const vigentes = e.schedules.filter((s) => s.effectiveTo === null)
+  const historicos = e.schedules.filter((s) => s.effectiveTo !== null)
 
   const rows: [string, string][] = [
     ['Documento', e.documentId],
@@ -60,13 +65,13 @@ export default async function EmpleadoDetallePage({ params }: { params: Promise<
 
         <div>
           <p className="mb-2 text-sm font-medium">Horario vigente</p>
-          {e.schedules.length === 0 ? (
+          {vigentes.length === 0 ? (
             <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
               Sin horario asignado
             </p>
           ) : (
             <ul className="divide-y rounded-lg border text-sm">
-              {e.schedules.map((s) => (
+              {vigentes.map((s) => (
                 <li key={s.dayOfWeek} className="flex justify-between px-4 py-2.5">
                   <span className="text-muted-foreground">{DAY_LABELS[s.dayOfWeek]}</span>
                   <span className="tabular-nums font-medium">
@@ -76,7 +81,32 @@ export default async function EmpleadoDetallePage({ params }: { params: Promise<
               ))}
             </ul>
           )}
+
+          {historicos.length > 0 && (
+            <div className="mt-4">
+              <p className="mb-2 text-sm font-medium text-muted-foreground">Historial de horarios</p>
+              <ul className="divide-y rounded-lg border text-sm">
+                {historicos.map((s, i) => (
+                  <li key={i} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span className="text-muted-foreground">{DAY_LABELS[s.dayOfWeek]}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="tabular-nums">
+                        {minutesToHHMM(s.startMinute)}–{minutesToHHMM(s.endMinute)}
+                      </span>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {fmtDate(s.effectiveFrom)} → {fmtDate(s.effectiveTo)}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
+      </div>
+
+      <div className="mt-8 border-t pt-6">
+        <EmployeeAccessPanel employeeId={e.id} employeeEmail={e.email} access={access} />
       </div>
     </div>
   )

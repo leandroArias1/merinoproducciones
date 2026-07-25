@@ -208,14 +208,26 @@ export interface ListEmployeesParams {
   pageSize: number
   categoryId?: string
   status?: EmployeeStatusFilter
+  /** Texto libre: busca en nombre, apellido y documento (server-side). */
+  search?: string
 }
 
 export async function listEmployees(db: Db, params: ListEmployeesParams) {
-  const { page, pageSize, categoryId, status = 'all' } = params
+  const { page, pageSize, categoryId, status = 'all', search } = params
+  const q = search?.trim()
   const where = {
     deletedAt: null, // siempre: las bajas no aparecen
     ...(categoryId ? { categoryId } : {}),
     ...(status === 'active' ? { active: true } : status === 'inactive' ? { active: false } : {}),
+    ...(q
+      ? {
+          OR: [
+            { firstName: { contains: q, mode: 'insensitive' as const } },
+            { lastName: { contains: q, mode: 'insensitive' as const } },
+            { documentId: { contains: q } },
+          ],
+        }
+      : {}),
   }
   const [total, rows] = await Promise.all([
     db.employee.count({ where }),
@@ -244,10 +256,13 @@ export async function getEmployee(db: Db, id: string) {
     where: { id, deletedAt: null },
     include: {
       category: { select: { id: true, name: true } },
+      // TODOS los horarios (no solo el vigente): el detalle muestra el vigente
+      // y el HISTORIAL de los cerrados (effectiveTo != null). Ordenados por
+      // vigencia desc para agrupar el más nuevo primero.
       schedules: {
-        where: { deletedAt: null, effectiveTo: null },
-        orderBy: { dayOfWeek: 'asc' },
-        select: { dayOfWeek: true, startMinute: true, endMinute: true, effectiveFrom: true },
+        where: { deletedAt: null },
+        orderBy: [{ effectiveFrom: 'desc' }, { dayOfWeek: 'asc' }],
+        select: { dayOfWeek: true, startMinute: true, endMinute: true, effectiveFrom: true, effectiveTo: true },
       },
     },
   })
