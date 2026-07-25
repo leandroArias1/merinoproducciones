@@ -3,6 +3,8 @@ import { prisma } from '@/lib/db'
 import { auth } from '@/lib/auth'
 import { createEmployee } from '@/lib/employees/employees'
 import { grantAccess, setUserRole, resetPassword, disableAccess, getEmployeeAccess } from '@/lib/users/access'
+import { getAppSession } from '@/lib/auth/session'
+import { decideAccess } from '@/lib/auth/access'
 
 const ACTOR = 'admin-user-id'
 
@@ -37,7 +39,38 @@ afterAll(async () => {
   await prisma.$disconnect()
 })
 
+/** Resuelve el rol de la sesión REAL tras loguear (lo mismo que usa requireRole). */
+async function sessionRoleAfterSignIn(email: string, password: string): Promise<string | null> {
+  const res = await auth.api.signInEmail({ body: { email, password }, asResponse: true })
+  const cookie = res.headers
+    .getSetCookie()
+    .map((c) => c.split(';')[0])
+    .join('; ')
+  const session = await getAppSession(new Headers({ cookie }))
+  return session?.role ?? null
+}
+
 describe('gestión de acceso del empleado', () => {
+  it('SEGUNDO admin: coexiste con el primero, loguea, y su SESIÓN resuelve a ADMIN (ve todo)', async () => {
+    // ACTOR ya es ADMIN. Creo dos empleados y les doy acceso ADMIN a ambos.
+    const emp1 = await makeEmployee('40100201')
+    const emp2 = await makeEmployee('40100202')
+    await grantAccess(prisma, { employeeId: emp1, email: 'admin.uno@e.com', password: 'AdminUno1', role: 'ADMIN' }, ACTOR)
+    await grantAccess(prisma, { employeeId: emp2, email: 'admin.dos@e.com', password: 'AdminDos2', role: 'ADMIN' }, ACTOR)
+
+    // Sin límite de admins: coexisten (ACTOR + los 2 nuevos → ≥ 3).
+    expect(await prisma.user.count({ where: { role: 'ADMIN' } })).toBeGreaterThanOrEqual(3)
+
+    // Los dos nuevos loguean.
+    expect(await canSignIn('admin.uno@e.com', 'AdminUno1')).toBe(true)
+    expect(await canSignIn('admin.dos@e.com', 'AdminDos2')).toBe(true)
+
+    // El 2º admin: su sesión REAL resuelve a rol ADMIN → requireRole(['ADMIN']) lo deja
+    // entrar a TODO (sueldos, caja, gestión de usuarios usan el mismo guard).
+    expect(await sessionRoleAfterSignIn('admin.dos@e.com', 'AdminDos2')).toBe('ADMIN')
+    expect(decideAccess({ role: 'ADMIN' }, ['ADMIN']).ok).toBe(true)
+  })
+
   it('crear acceso SUPERVISOR: vincula, setea rol, y el empleado puede loguearse', async () => {
     const empId = await makeEmployee()
     const email = 'ana.super@empresa.com'
