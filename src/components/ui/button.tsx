@@ -26,13 +26,48 @@ const buttonVariants = cva(
   },
 )
 
+/** Rueda del estado "guardando". `.spinner` respeta prefers-reduced-motion. */
+function Spinner() {
+  return (
+    <span
+      aria-hidden
+      className="spinner size-3.5 shrink-0 rounded-full border-2 border-current/30 border-t-current"
+    />
+  )
+}
+
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {}
+    VariantProps<typeof buttonVariants> {
+  /**
+   * Acción en curso: deshabilita, muestra la rueda y reemplaza el texto por
+   * `loadingText`. En este sistema una mutación tarda ~3 s contra Supabase;
+   * sin este estado el silencio se lee como "se colgó" y el usuario vuelve a
+   * apretar. Anunciado con aria-busy para lectores de pantalla.
+   */
+  loading?: boolean
+  /** Texto mientras carga. Por defecto "Guardando…". */
+  loadingText?: string
+}
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, ...props }, ref) => (
-    <button ref={ref} className={cn(buttonVariants({ variant, size }), className)} {...props} />
+  ({ className, variant, size, loading = false, loadingText = 'Guardando…', disabled, children, ...props }, ref) => (
+    <button
+      ref={ref}
+      className={cn(buttonVariants({ variant, size }), className)}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      {...props}
+    >
+      {loading ? (
+        <>
+          <Spinner />
+          {loadingText}
+        </>
+      ) : (
+        children
+      )}
+    </button>
   ),
 )
 Button.displayName = 'Button'
