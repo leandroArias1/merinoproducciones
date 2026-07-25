@@ -19,6 +19,12 @@ function fail(e: unknown): ActionResult {
   throw e
 }
 
+/** Tocar una fichada/status cambia también el contador "Días a revisar" del dashboard. */
+function revalidateAsistencia(): void {
+  revalidatePath('/admin/asistencia')
+  revalidatePath('/admin')
+}
+
 export const editEntryAction = action(
   ['ADMIN'],
   async (ctx, id: string, checkInLocal: string, checkOutLocal: string): Promise<ActionResult> => {
@@ -30,7 +36,7 @@ export const editEntryAction = action(
         { checkIn: baLocalToInstant(checkInLocal), checkOut: checkOutLocal ? baLocalToInstant(checkOutLocal) : null },
         ctx.actorId,
       )
-      revalidatePath('/admin/asistencia')
+      revalidateAsistencia()
       return { ok: true }
     } catch (e) {
       return fail(e)
@@ -41,7 +47,7 @@ export const editEntryAction = action(
 export const deleteEntryAction = action(['ADMIN'], async (ctx, id: string): Promise<ActionResult> => {
   try {
     await adminDeleteTimeEntry(prisma, id, ctx.actorId)
-    revalidatePath('/admin/asistencia')
+    revalidateAsistencia()
     return { ok: true }
   } catch (e) {
     return fail(e)
@@ -58,7 +64,7 @@ export const markJustifiedAction = action(
         status: 'JUSTIFIED',
         actorId: ctx.actorId,
       })
-      revalidatePath('/admin/asistencia')
+      revalidateAsistencia()
       return { ok: true }
     } catch (e) {
       return fail(e)
@@ -71,7 +77,7 @@ export const recalcDayAction = action(
   async (ctx, employeeId: string, workDateKey: string): Promise<ActionResult> => {
     try {
       await adminRecalcDay(prisma, employeeId, workDateFromKey(workDateKey), ctx.actorId)
-      revalidatePath('/admin/asistencia')
+      revalidateAsistencia()
       return { ok: true }
     } catch (e) {
       return fail(e)

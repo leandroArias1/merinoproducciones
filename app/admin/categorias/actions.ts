@@ -33,6 +33,7 @@ export const updateCategoryAction = action(
     try {
       await updateCategory(prisma, id, parsed.data)
       revalidatePath('/admin/categorias')
+      revalidatePath(`/admin/categorias/${id}`) // la pantalla de edición donde está el usuario
       return { ok: true, id }
     } catch (e) {
       return fail(e)

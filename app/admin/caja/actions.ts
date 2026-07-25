@@ -11,6 +11,21 @@ import { todayKeyBA, workDateFromKey } from '@/lib/attendance/timezone'
 
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string }
 
+/**
+ * Revalida TODAS las pantallas de finanzas, no solo /admin/caja.
+ * Un pago/gasto/precio cambia saldo, por cobrar, por pagar, rentabilidad y
+ * reportes a la vez, y el usuario dispara la acción desde cualquiera de ellas:
+ * revalidar solo la ruta "principal" dejaba la pantalla donde está parado
+ * mostrando el dato viejo (parecía que no había guardado). Bug real de prod.
+ */
+function revalidateCaja(): void {
+  revalidatePath('/admin/caja')
+  revalidatePath('/admin/caja/cobrar')
+  revalidatePath('/admin/caja/pagar')
+  revalidatePath('/admin/caja/rentabilidad')
+  revalidatePath('/admin/reportes')
+}
+
 function fail(e: unknown): ActionResult {
   if (e instanceof ActionError) return { ok: false, error: e.message }
   return { ok: false, error: `Error inesperado: ${e instanceof Error ? e.message : String(e)}` }
@@ -33,7 +48,7 @@ export const registerClientPaymentAction = action(
     if (!(amountPesos > 0)) return { ok: false, error: 'El monto debe ser mayor a 0.' }
     try {
       const id = await registerClientPayment(prisma, { eventId, amountCents: toCents(amountPesos), occurredOn: dateOf(occurredOnKey), note }, ctx.actorId)
-      revalidatePath('/admin/caja')
+      revalidateCaja()
       return { ok: true, id }
     } catch (e) {
       return fail(e)
@@ -65,7 +80,7 @@ export const registerExpenseAction = action(
         },
         ctx.actorId,
       )
-      revalidatePath('/admin/caja')
+      revalidateCaja()
       return { ok: true, id }
     } catch (e) {
       return fail(e)
@@ -76,7 +91,7 @@ export const registerExpenseAction = action(
 export const payExpenseAction = action(['ADMIN'], async (ctx, expenseId: string, occurredOnKey?: string): Promise<ActionResult> => {
   try {
     await payExpense(prisma, expenseId, dateOf(occurredOnKey), ctx.actorId)
-    revalidatePath('/admin/caja')
+    revalidateCaja()
     return { ok: true }
   } catch (e) {
     return fail(e)
@@ -86,7 +101,7 @@ export const payExpenseAction = action(['ADMIN'], async (ctx, expenseId: string,
 export const deleteMovementAction = action(['ADMIN'], async (ctx, movementId: string): Promise<ActionResult> => {
   try {
     await deleteMovement(prisma, movementId, ctx.actorId)
-    revalidatePath('/admin/caja')
+    revalidateCaja()
     return { ok: true }
   } catch (e) {
     return fail(e)
@@ -96,7 +111,7 @@ export const deleteMovementAction = action(['ADMIN'], async (ctx, movementId: st
 export const deleteExpenseAction = action(['ADMIN'], async (ctx, expenseId: string): Promise<ActionResult> => {
   try {
     await deleteExpense(prisma, expenseId, ctx.actorId)
-    revalidatePath('/admin/caja')
+    revalidateCaja()
     return { ok: true }
   } catch (e) {
     return fail(e)
@@ -111,7 +126,7 @@ export const setEventPriceAction = action(
     if (agreedPesos !== null && !(agreedPesos >= 0)) return { ok: false, error: 'El precio no puede ser negativo.' }
     try {
       await setEventPrice(prisma, eventId, { agreedCents: agreedPesos === null ? null : toCents(agreedPesos), clientId }, ctx.actorId)
-      revalidatePath('/admin/caja')
+      revalidateCaja()
       revalidatePath(`/admin/eventos/${eventId}`)
       return { ok: true }
     } catch (e) {
@@ -121,12 +136,6 @@ export const setEventPriceAction = action(
 )
 
 // ── Clientes / proveedores ──
-
-function revalidateCaja(): void {
-  revalidatePath('/admin/caja')
-  revalidatePath('/admin/caja/cobrar')
-  revalidatePath('/admin/caja/pagar')
-}
 
 export const createPartyAction = action(['ADMIN'], async (ctx, name: string, kind: string, notes?: string): Promise<ActionResult> => {
   if (kind !== 'CLIENT' && kind !== 'PROVIDER') return { ok: false, error: 'Tipo inválido.' }
@@ -165,7 +174,7 @@ export const setDeductionAction = action(['ADMIN'], async (ctx, pesos: number, e
   if (!(pesos >= 0)) return { ok: false, error: 'El descuento no puede ser negativo.' }
   try {
     await setAbsentDeductionCents(prisma, toCents(pesos), dateOf(effectiveKey), ctx.actorId)
-    revalidatePath('/admin/caja')
+    revalidateCaja()
     return { ok: true }
   } catch (e) {
     return fail(e)
