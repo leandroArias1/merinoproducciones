@@ -9,6 +9,7 @@ import { minutesToHHMM } from '@/lib/employees/format'
 import { StatusBadge } from '@/components/events/status-badge'
 import { DayCorrections } from '@/components/attendance/day-corrections'
 import { FilterChips } from '@/components/shell/filter-chips'
+import { fechaARDesdeClave } from '@/components/format'
 import { FilterForm } from '@/components/shell/filter-form'
 import { ATTENDANCE_STATUS_LABELS as STATUS_LABELS, statusLabel, statusTone, warningLabel } from '@/lib/attendance/labels'
 
@@ -188,7 +189,7 @@ async function ReviewView() {
           {rows.map((r) => (
             <tr key={r.attendanceId} className="border-b border-[var(--border-soft)] transition-colors last:border-0 hover:bg-paper">
               <td className="px-4 py-2.5 font-medium">{r.employeeName}</td>
-              <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{r.workDateKey}</td>
+              <td className="num px-4 py-2.5 text-muted-foreground">{fechaARDesdeClave(r.workDateKey)}</td>
               <td className="px-4 py-2.5">
                 <StatusBadge label={statusLabel(r.status)} tone={statusTone(r.status)} />
               </td>
