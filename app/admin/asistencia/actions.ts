@@ -19,10 +19,10 @@ function fail(e: unknown): ActionResult {
   throw e
 }
 
-/** Tocar una fichada/status cambia también el contador "Días a revisar" del dashboard. */
+/** Tocar una fichada/status cambia la tabla del día, los días a revisar y el
+ *  contador del dashboard: una sola llamada con alcance 'layout' los cubre. */
 function revalidateAsistencia(): void {
-  revalidatePath('/admin/asistencia')
-  revalidatePath('/admin')
+  revalidatePath('/admin', 'layout')
 }
 
 export const editEntryAction = action(

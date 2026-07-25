@@ -12,18 +12,18 @@ import { todayKeyBA, workDateFromKey } from '@/lib/attendance/timezone'
 export type ActionResult = { ok: true; id?: string } | { ok: false; error: string }
 
 /**
- * Revalida TODAS las pantallas de finanzas, no solo /admin/caja.
- * Un pago/gasto/precio cambia saldo, por cobrar, por pagar, rentabilidad y
- * reportes a la vez, y el usuario dispara la acción desde cualquiera de ellas:
- * revalidar solo la ruta "principal" dejaba la pantalla donde está parado
- * mostrando el dato viejo (parecía que no había guardado). Bug real de prod.
+ * Un movimiento de plata cambia a la vez saldo, por cobrar, por pagar,
+ * rentabilidad y reportes, y la acción se dispara desde cualquiera de esas
+ * pantallas: revalidar solo la ruta "principal" dejaba la pantalla donde está
+ * parado el usuario mostrando el dato viejo (bug real de prod).
+ *
+ * UNA sola llamada con alcance 'layout' en lugar de una por ruta: invalida
+ * todo el subárbol de /admin de una vez, así que cubre MÁS pantallas que la
+ * lista enumerada (el equilibrio va del lado seguro) y cuesta una sola
+ * operación dentro del POST de la Server Action.
  */
 function revalidateCaja(): void {
-  revalidatePath('/admin/caja')
-  revalidatePath('/admin/caja/cobrar')
-  revalidatePath('/admin/caja/pagar')
-  revalidatePath('/admin/caja/rentabilidad')
-  revalidatePath('/admin/reportes')
+  revalidatePath('/admin', 'layout')
 }
 
 function fail(e: unknown): ActionResult {

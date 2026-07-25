@@ -18,10 +18,12 @@ function fail(e: unknown): ActionResult {
  * Cerrar/pagar/reabrir se dispara DESDE la página del mes, no desde el índice:
  * revalidar solo '/admin/liquidaciones' dejaba la pantalla del período mostrando
  * el estado viejo (parecía que el botón no había hecho nada). Mismo bug que caja.
+ *
+ * Una sola llamada con alcance 'layout' cubre el índice, la página del período
+ * y el recibo, sin enumerar rutas ni pagar una operación por cada una.
  */
-function revalidatePeriod(year: number, month: number): void {
-  revalidatePath('/admin/liquidaciones')
-  revalidatePath(`/admin/liquidaciones/${year}/${month}`)
+function revalidateAdmin(): void {
+  revalidatePath('/admin', 'layout')
 }
 
 function validPeriod(year: number, month: number): string | null {
@@ -35,7 +37,7 @@ export const closePeriodAction = action(['ADMIN'], async (ctx, year: number, mon
   if (err) return { ok: false, error: err }
   try {
     await closePeriod(prisma, year, month, ctx.actorId)
-    revalidatePeriod(year, month)
+    revalidateAdmin()
     return { ok: true }
   } catch (e) {
     return fail(e)
@@ -47,7 +49,7 @@ export const payPeriodAction = action(['ADMIN'], async (ctx, year: number, month
   if (err) return { ok: false, error: err }
   try {
     await payPeriod(prisma, year, month, ctx.actorId)
-    revalidatePeriod(year, month)
+    revalidateAdmin()
     return { ok: true }
   } catch (e) {
     return fail(e)
@@ -59,7 +61,7 @@ export const reopenPeriodAction = action(['ADMIN'], async (ctx, year: number, mo
   if (err) return { ok: false, error: err }
   try {
     await reopenPeriod(prisma, year, month, ctx.actorId)
-    revalidatePeriod(year, month)
+    revalidateAdmin()
     return { ok: true }
   } catch (e) {
     return fail(e)
@@ -80,9 +82,7 @@ export const bulkRaiseAction = action(
     try {
       const cents = BigInt(monthlyPesos) * 100n
       await bulkSetSalary(prisma, employeeIds, cents, workDateFromKey(key), ctx.actorId)
-      revalidatePath('/admin/empleados')
-      revalidatePath('/admin/liquidaciones')
-      revalidatePath('/admin/liquidaciones/aumentos') // la pantalla desde donde se dispara
+      revalidateAdmin()
       return { ok: true }
     } catch (e) {
       return fail(e)
