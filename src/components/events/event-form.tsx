@@ -45,10 +45,10 @@ export function EventForm({ initial }: { initial?: EventInitial }) {
           <input {...register('name')} className={inputCls} />
           {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
         </div>
-        <div className="space-y-1.5">
-          <label className="text-sm font-medium">Cliente</label>
-          <input {...register('client')} className={inputCls} />
-        </div>
+        {/* El cliente ya NO se escribe suelto acá: se elige de la agenda desde
+            el bloque de cobranza de la ficha, para que sea el mismo cliente que
+            en Clientes y no dos conceptos sueltos con el mismo nombre. El campo
+            de texto viejo sigue en la base (no se borra) pero sale de la UI. */}
         <div className="space-y-1.5">
           <label className="text-sm font-medium">Lugar</label>
           <input {...register('venue')} className={inputCls} />
