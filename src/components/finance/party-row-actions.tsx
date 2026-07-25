@@ -1,13 +1,18 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { updatePartyAction, deletePartyAction } from '~/app/admin/caja/actions'
 
-/** Editar (nombre + notas) y eliminar un cliente/proveedor desde su fila. */
+/**
+ * Editar (nombre + notas) y eliminar un cliente/proveedor desde su fila.
+ *
+ * SIN `router.refresh()`: la action ya llama `revalidatePath`, y en App Router
+ * eso hace que la respuesta del POST traiga el árbol actualizado. Agregar un
+ * refresh dispara un SEGUNDO render completo de la página (medido: +2,5 s por
+ * clic). La pantalla se actualiza igual con el POST solo.
+ */
 export function PartyRowActions({ id, name, notes, kindLabel }: { id: string; name: string; notes: string | null; kindLabel: string }) {
-  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState(false)
@@ -21,7 +26,6 @@ export function PartyRowActions({ id, name, notes, kindLabel }: { id: string; na
       const res = await updatePartyAction(id, n.trim(), nt.trim() || undefined)
       if (!res.ok) return setError(res.error ?? 'Error.')
       setEditing(false)
-      router.refresh()
     })
   }
 
@@ -31,7 +35,6 @@ export function PartyRowActions({ id, name, notes, kindLabel }: { id: string; na
     startTransition(async () => {
       const res = await deletePartyAction(id)
       if (!res.ok) return setError(res.error ?? 'Error.')
-      router.refresh()
     })
   }
 
