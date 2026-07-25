@@ -3,24 +3,47 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Menu, X, LayoutDashboard, Users, Tags, CalendarDays, ClipboardCheck, Wallet, Coins, BarChart3 } from 'lucide-react'
+import { Menu, X, Home, Users, Clock, CalendarDays, ClipboardCheck, Wallet, Coins, BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { LogoutButton } from './logout-button'
 
+/**
+ * Navegación agrupada por la PREGUNTA que contesta cada sección, no por cómo
+ * está construido el sistema. Los nombres son los del negocio: el dueño dice
+ * "sueldos" y "horarios", no "liquidaciones" y "categorías".
+ *
+ * Las rutas NO cambian (igual que en el rebrand): esto es sólo etiqueta y
+ * agrupación. Los grupos chicos mantienen cada bloque escaneable de un vistazo
+ * aunque la lista total pase de siete ítems.
+ *
+ * "Clientes" y "Proveedores" entran en este menú cuando existan como pantallas
+ * propias; hoy siguen dentro de Caja y nombrarlos acá sería mentir.
+ */
 const NAV = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/empleados', label: 'Empleados', icon: Users },
-  { href: '/admin/categorias', label: 'Categorías', icon: Tags },
-  { href: '/admin/eventos', label: 'Eventos', icon: CalendarDays },
-  { href: '/admin/asistencia', label: 'Asistencia', icon: ClipboardCheck },
-  { href: '/admin/liquidaciones', label: 'Liquidaciones', icon: Wallet },
-  { href: '/admin/caja', label: 'Caja', icon: Coins },
-  { href: '/admin/reportes', label: 'Reportes', icon: BarChart3 },
+  { title: null, items: [{ href: '/admin', label: 'Hoy', icon: Home }] },
+  {
+    title: 'Personal',
+    items: [
+      { href: '/admin/empleados', label: 'Empleados', icon: Users },
+      { href: '/admin/asistencia', label: 'Asistencia', icon: ClipboardCheck },
+      { href: '/admin/liquidaciones', label: 'Sueldos', icon: Wallet },
+      { href: '/admin/categorias', label: 'Horarios', icon: Clock },
+    ],
+  },
+  { title: 'Trabajo', items: [{ href: '/admin/eventos', label: 'Eventos', icon: CalendarDays }] },
+  {
+    title: 'Dinero',
+    items: [
+      { href: '/admin/caja', label: 'Caja', icon: Coins },
+      { href: '/admin/reportes', label: 'Reportes', icon: BarChart3 },
+    ],
+  },
 ] as const
 
+/** El wordmark es largo: `truncate` es la red por si el sidebar se angosta. */
 function Brand() {
   return (
-    <span className="text-sm font-semibold tracking-tight">
+    <span className="truncate text-sm font-semibold tracking-tight" title="Merino Producciones">
       Merino <span className="text-primary">Producciones</span>
     </span>
   )
@@ -29,30 +52,42 @@ function Brand() {
 function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
   return (
     <>
-      {NAV.map(({ href, label, icon: Icon }) => {
-        const active = href === '/admin' ? pathname === href : pathname.startsWith(href)
-        return (
-          <Link
-            key={href}
-            href={href}
-            // Sin prefetch: los 8 links están en viewport en desktop, así que
-            // Next ejecutaba las 8 páginas enteras (queries + sesión) al montar
-            // el shell. Medido: con 8 pedidos en paralelo cada uno pasa de ~1 s
-            // a 2,5-3,4 s por contención. La navegación sigue siendo cliente.
-            prefetch={false}
-            onClick={onNavigate}
-            className={cn(
-              'flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-sm transition-colors [&_svg]:size-4 [&_svg]:shrink-0',
-              active
-                ? 'bg-secondary font-medium text-foreground'
-                : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
-            )}
-          >
-            <Icon strokeWidth={2} />
-            {label}
-          </Link>
-        )
-      })}
+      {NAV.map((group) => (
+        <div key={group.title ?? 'inicio'} className="flex flex-col gap-px">
+          {group.title && (
+            <span className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+              {group.title}
+            </span>
+          )}
+          {group.items.map(({ href, label, icon: Icon }) => {
+            const active = href === '/admin' ? pathname === href : pathname.startsWith(href)
+            return (
+              <Link
+                key={href}
+                href={href}
+                // Sin prefetch: los links están en viewport en desktop, así que
+                // Next ejecutaba cada página entera (queries + sesión) al montar
+                // el shell. Medido: con 8 pedidos en paralelo cada uno pasa de
+                // ~1 s a 2,5-3,4 s por contención. La navegación sigue siendo
+                // del lado del cliente.
+                prefetch={false}
+                onClick={onNavigate}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'flex items-center gap-2.5 rounded-sm px-2.5 py-1.5 text-sm transition-colors [&_svg]:size-4 [&_svg]:shrink-0',
+                  active
+                    ? // El activo se marca por fondo Y barra lateral: no depende sólo del color.
+                      'bg-primary-tint font-semibold text-primary shadow-[inset_2px_0_0_var(--primary)]'
+                    : 'text-muted-foreground hover:bg-secondary hover:text-foreground',
+                )}
+              >
+                <Icon strokeWidth={2} />
+                <span className="truncate">{label}</span>
+              </Link>
+            )
+          })}
+        </div>
+      ))}
     </>
   )
 }
@@ -85,24 +120,26 @@ export function AdminShell({ userLabel, children }: { userLabel: string; childre
 
   return (
     <div className="min-h-[100dvh] md:grid md:grid-cols-[15rem_1fr]">
-      {/* Sidebar fijo (desktop) */}
-      <aside className="hidden border-r bg-background md:flex md:flex-col">
+      {/* Sidebar fijo (desktop). Fondo `paper` contra el contenido en `surface`:
+          la separación la hace la superficie, no una sombra. */}
+      <aside className="hidden border-r bg-paper md:flex md:flex-col">
         <div className="flex h-12 items-center border-b px-4">
           <Brand />
         </div>
-        <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
+        {/* gap-3.5 entre grupos vs gap-px dentro: la proximidad agrupa. */}
+        <nav className="flex flex-1 flex-col gap-3.5 overflow-y-auto p-2 pt-3">
           <NavLinks pathname={pathname} />
         </nav>
         <SidebarFooter userLabel={userLabel} />
       </aside>
 
       {/* Header mobile con hamburguesa */}
-      <header className="flex h-12 items-center gap-3 border-b bg-background px-3 md:hidden">
+      <header className="flex h-12 items-center gap-3 border-b bg-paper px-3 md:hidden">
         <button
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Abrir menú"
-          className="grid size-8 place-items-center rounded-md hover:bg-secondary [&_svg]:size-5"
+          className="grid size-8 shrink-0 place-items-center rounded-md hover:bg-secondary [&_svg]:size-5"
         >
           <Menu />
         </button>
@@ -113,19 +150,19 @@ export function AdminShell({ userLabel, children }: { userLabel: string; childre
       {open && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setOpen(false)} aria-hidden />
-          <aside className="absolute inset-y-0 left-0 flex w-64 flex-col border-r bg-background shadow-xl">
-            <div className="flex h-12 items-center justify-between border-b px-4">
+          <aside className="absolute inset-y-0 left-0 flex w-64 flex-col border-r bg-paper shadow-xl">
+            <div className="flex h-12 items-center justify-between gap-2 border-b px-4">
               <Brand />
               <button
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Cerrar menú"
-                className="grid size-8 place-items-center rounded-md hover:bg-secondary [&_svg]:size-5"
+                className="grid size-8 shrink-0 place-items-center rounded-md hover:bg-secondary [&_svg]:size-5"
               >
                 <X />
               </button>
             </div>
-            <nav className="flex-1 space-y-0.5 overflow-y-auto p-2">
+            <nav className="flex flex-1 flex-col gap-3.5 overflow-y-auto p-2 pt-3">
               <NavLinks pathname={pathname} onNavigate={() => setOpen(false)} />
             </nav>
             <SidebarFooter userLabel={userLabel} />
