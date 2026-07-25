@@ -29,25 +29,25 @@ export default async function CategoriasPage() {
           <p className="mt-1 text-xs text-muted-foreground">Creá la primera para asignarla a los empleados.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="overflow-x-auto rounded-lg border bg-surface">
           <table className="w-full min-w-[640px] text-sm">
-            <thead className="bg-secondary text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <thead className="border-b text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="px-4 py-2.5 font-medium">Nombre</th>
-                <th className="px-4 py-2.5 font-medium">Plantilla</th>
-                <th className="px-4 py-2.5 text-right font-medium">Empleados</th>
+                <th className="px-4 py-2.5 font-semibold">Nombre</th>
+                <th className="px-4 py-2.5 font-semibold">Plantilla</th>
+                <th className="px-4 py-2.5 text-right font-semibold">Empleados</th>
                 <th className="w-24 px-4 py-2.5" />
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody>
               {categories.map((c) => (
-                <tr key={c.id} className="transition-colors hover:bg-secondary/60">
+                <tr key={c.id} className="border-b border-[var(--border-soft)] transition-colors last:border-0 hover:bg-paper">
                   <td className="px-4 py-2.5">
                     <div className="font-medium">{c.name}</div>
                     {c.description && <div className="text-xs text-muted-foreground">{c.description}</div>}
                   </td>
                   <td className="px-4 py-2.5 text-muted-foreground">{summarizeDays(c.days)}</td>
-                  <td className="px-4 py-2.5 text-right tabular-nums">{c.employeeCount}</td>
+                  <td className="px-4 py-2.5 num text-right">{c.employeeCount}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center justify-end gap-1">
                       <Link

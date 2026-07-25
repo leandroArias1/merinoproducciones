@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { HandCoins, ReceiptText, TrendingUp, Settings } from 'lucide-react'
+import { ReceiptText, Settings } from 'lucide-react'
 import { prisma } from '@/lib/db'
 import { cashBalance } from '@/lib/finance/profit'
 import { listMovements } from '@/lib/finance/queries'
@@ -39,9 +39,7 @@ export default async function CajaPage({ searchParams }: { searchParams: Promise
           <p className="mt-1 text-sm text-muted-foreground">Lo que entra, lo que sale y cuánto hay.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Link href="/admin/caja/cobrar"><Button variant="secondary" size="sm"><HandCoins /> Por cobrar</Button></Link>
           <Link href="/admin/caja/pagar"><Button variant="secondary" size="sm"><ReceiptText /> Por pagar</Button></Link>
-          <Link href="/admin/caja/rentabilidad"><Button variant="secondary" size="sm"><TrendingUp /> Rentabilidad</Button></Link>
           <Link href="/admin/caja/config"><Button variant="secondary" size="sm"><Settings /> Config</Button></Link>
         </div>
       </header>

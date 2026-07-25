@@ -8,23 +8,9 @@ import { baTimeLabel, instantToBaLocal } from '@/lib/events/time'
 import { minutesToHHMM } from '@/lib/employees/format'
 import { StatusBadge } from '@/components/events/status-badge'
 import { DayCorrections } from '@/components/attendance/day-corrections'
-import { cn } from '@/lib/utils'
+import { FilterChips } from '@/components/shell/filter-chips'
 import { FilterForm } from '@/components/shell/filter-form'
 import { ATTENDANCE_STATUS_LABELS as STATUS_LABELS, statusLabel, statusTone, warningLabel } from '@/lib/attendance/labels'
-
-function Tab({ href, active, children }: { href: string; active: boolean; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        'rounded-md px-3 py-1.5 text-sm transition-colors',
-        active ? 'bg-secondary font-medium text-foreground' : 'text-muted-foreground hover:bg-secondary',
-      )}
-    >
-      {children}
-    </Link>
-  )
-}
 
 export default async function AsistenciaPage({
   searchParams,
@@ -50,12 +36,13 @@ export default async function AsistenciaPage({
       </header>
 
       <div className="mb-4 flex items-center gap-1">
-        <Tab href="/admin/asistencia?vista=dia" active={vista === 'dia'}>
-          Del día
-        </Tab>
-        <Tab href="/admin/asistencia?vista=revisar" active={vista === 'revisar'}>
-          Días a revisar
-        </Tab>
+        <FilterChips
+          active={vista}
+          chips={[
+            { key: "dia", label: "Del día", href: "/admin/asistencia?vista=dia" },
+            { key: "revisar", label: "Días a revisar", href: "/admin/asistencia?vista=revisar" },
+          ]}
+        />
       </div>
 
       {vista === 'revisar' ? <ReviewView /> : <DayView fecha={fecha} estado={sp.estado} empleado={sp.empleado} employees={employees} />}
@@ -120,20 +107,20 @@ async function DayView({
           No hay asistencia registrada ese día.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="overflow-x-auto rounded-lg border bg-surface">
           <table className="w-full min-w-[720px] text-sm">
-            <thead className="bg-secondary text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <thead className="border-b text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="px-4 py-2.5 font-medium">Empleado</th>
-                <th className="px-4 py-2.5 font-medium">Entrada</th>
-                <th className="px-4 py-2.5 font-medium">Salida</th>
-                <th className="px-4 py-2.5 font-medium">Horas</th>
-                <th className="px-4 py-2.5 font-medium">Estado</th>
-                <th className="px-4 py-2.5 font-medium">Warnings</th>
+                <th className="px-4 py-2.5 font-semibold">Empleado</th>
+                <th className="px-4 py-2.5 font-semibold">Entrada</th>
+                <th className="px-4 py-2.5 font-semibold">Salida</th>
+                <th className="px-4 py-2.5 font-semibold">Horas</th>
+                <th className="px-4 py-2.5 font-semibold">Estado</th>
+                <th className="px-4 py-2.5 font-semibold">Warnings</th>
                 <th className="px-4 py-2.5" />
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody>
               {rows.map((r) => (
                 <tr key={r.employeeId} className="align-top">
                   <td className="px-4 py-2.5 font-medium">{r.employeeName}</td>
@@ -143,7 +130,7 @@ async function DayView({
                   <td className="px-4 py-2.5 tabular-nums text-muted-foreground">
                     {r.hasOpen ? <span className="text-primary">abierta</span> : r.lastCheckOut ? baTimeLabel(r.lastCheckOut) : '—'}
                   </td>
-                  <td className="px-4 py-2.5 tabular-nums">{minutesToHHMM(r.workedMinutes)}</td>
+                  <td className="px-4 py-2.5 num">{minutesToHHMM(r.workedMinutes)}</td>
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-1.5">
                       <StatusBadge label={statusLabel(r.status)} tone={statusTone(r.status)} />
@@ -186,20 +173,20 @@ async function ReviewView() {
       <p className="mt-1 text-xs text-muted-foreground">La liquidación puede cerrar sin trabas.</p>
     </div>
   ) : (
-    <div className="overflow-x-auto rounded-lg border">
+    <div className="overflow-x-auto rounded-lg border bg-surface">
       <table className="w-full min-w-[720px] text-sm">
-        <thead className="bg-secondary text-left text-xs uppercase tracking-wide text-muted-foreground">
+        <thead className="border-b text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
           <tr>
-            <th className="px-4 py-2.5 font-medium">Empleado</th>
-            <th className="px-4 py-2.5 font-medium">Día</th>
-            <th className="px-4 py-2.5 font-medium">Estado</th>
-            <th className="px-4 py-2.5 font-medium">Warnings</th>
+            <th className="px-4 py-2.5 font-semibold">Empleado</th>
+            <th className="px-4 py-2.5 font-semibold">Día</th>
+            <th className="px-4 py-2.5 font-semibold">Estado</th>
+            <th className="px-4 py-2.5 font-semibold">Warnings</th>
             <th className="px-4 py-2.5" />
           </tr>
         </thead>
-        <tbody className="divide-y">
+        <tbody>
           {rows.map((r) => (
-            <tr key={r.attendanceId} className="transition-colors hover:bg-secondary/60">
+            <tr key={r.attendanceId} className="border-b border-[var(--border-soft)] transition-colors last:border-0 hover:bg-paper">
               <td className="px-4 py-2.5 font-medium">{r.employeeName}</td>
               <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{r.workDateKey}</td>
               <td className="px-4 py-2.5">

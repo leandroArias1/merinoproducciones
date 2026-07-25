@@ -1,11 +1,12 @@
 import Link from 'next/link'
-import { Plus, Upload } from 'lucide-react'
+import { Plus, Upload, Search } from 'lucide-react'
 import { prisma } from '@/lib/db'
 import { listEmployees, type EmployeeStatusFilter } from '@/lib/employees/employees'
 import { listCategories } from '@/lib/employees/categories'
 import { EMPLOYMENT_TYPE_LABELS } from '@/lib/employees/schema'
 import { Button } from '@/components/ui/button'
 import { FilterForm } from '@/components/shell/filter-form'
+import { FilterChips } from '@/components/shell/filter-chips'
 
 const PAGE_SIZE = 10
 
@@ -62,75 +63,75 @@ export default async function EmpleadosPage({
         </div>
       </header>
 
-      <FilterForm className="mb-4 flex flex-wrap items-end gap-3">
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Buscar</label>
-          <input
-            type="search"
-            name="q"
-            defaultValue={q ?? ''}
-            placeholder="Nombre o DNI"
-            className="h-9 w-48 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-primary"
-          />
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Categoría</label>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <FilterForm className="flex min-w-56 flex-1 flex-wrap items-center gap-2">
+          <label className="flex h-9 min-w-48 flex-1 items-center gap-2 rounded-md border bg-paper px-3">
+            <Search className="size-4 shrink-0 text-muted-foreground" />
+            <input
+              type="search"
+              name="q"
+              defaultValue={q ?? ''}
+              placeholder="Buscar por nombre o DNI…"
+              aria-label="Buscar empleado"
+              className="w-full bg-transparent text-sm outline-none"
+            />
+          </label>
+          {/* La categoría sigue en select: son tantas como horarios haya. */}
           <select
             name="categoria"
             defaultValue={categoria ?? ''}
+            aria-label="Filtrar por horario"
             className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-primary"
           >
-            <option value="">Todas</option>
+            <option value="">Todos los horarios</option>
             {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
           </select>
-        </div>
-        <div className="space-y-1">
-          <label className="text-xs font-medium text-muted-foreground">Estado</label>
-          <select
-            name="estado"
-            defaultValue={estado}
-            className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-primary"
-          >
-            <option value="all">Todos</option>
-            <option value="active">Activos</option>
-            <option value="inactive">Inactivos</option>
-          </select>
-        </div>
-        <Button type="submit" variant="secondary" size="sm">
-          Filtrar
-        </Button>
-      </FilterForm>
+          {estado !== 'all' && <input type="hidden" name="estado" value={estado} />}
+          <Button type="submit" variant="secondary" size="sm">
+            Buscar
+          </Button>
+        </FilterForm>
+
+        <FilterChips
+          active={estado}
+          chips={[
+            { key: 'all', label: 'Todos', href: `/admin/empleados${buildQuery({ categoria, q })}` },
+            { key: 'active', label: 'Activos', href: `/admin/empleados${buildQuery({ categoria, q, estado: 'active' })}` },
+            { key: 'inactive', label: 'Inactivos', href: `/admin/empleados${buildQuery({ categoria, q, estado: 'inactive' })}` },
+          ]}
+        />
+      </div>
 
       {rows.length === 0 ? (
         <div className="grid place-items-center rounded-lg border border-dashed py-16 text-center">
           <p className="text-sm font-medium">No hay empleados con ese filtro</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">
+        <div className="overflow-x-auto rounded-lg border bg-surface">
           <table className="w-full min-w-[640px] text-sm">
-            <thead className="bg-secondary text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <thead className="border-b text-left text-[10.5px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="px-4 py-2.5 font-medium">Empleado</th>
-                <th className="px-4 py-2.5 font-medium">Documento</th>
-                <th className="px-4 py-2.5 font-medium">Cargo</th>
-                <th className="px-4 py-2.5 font-medium">Categoría</th>
-                <th className="px-4 py-2.5 font-medium">Contrato</th>
-                <th className="px-4 py-2.5 font-medium">Estado</th>
+                <th className="px-4 py-2.5 font-semibold">Empleado</th>
+                <th className="px-4 py-2.5 font-semibold">Documento</th>
+                <th className="px-4 py-2.5 font-semibold">Cargo</th>
+                <th className="px-4 py-2.5 font-semibold">Categoría</th>
+                <th className="px-4 py-2.5 font-semibold">Contrato</th>
+                <th className="px-4 py-2.5 font-semibold">Estado</th>
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody>
               {rows.map((e) => (
-                <tr key={e.id} className="transition-colors hover:bg-secondary/60">
+                <tr key={e.id} className="border-b border-[var(--border-soft)] transition-colors last:border-0 hover:bg-paper">
                   <td className="px-4 py-2.5">
                     <Link href={`/admin/empleados/${e.id}`} className="font-medium hover:text-primary">
                       {e.lastName}, {e.firstName}
                     </Link>
                   </td>
-                  <td className="px-4 py-2.5 tabular-nums text-muted-foreground">{e.documentId}</td>
+                  <td className="num px-4 py-2.5 text-muted-foreground">{e.documentId}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{e.position ?? '—'}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">{e.category?.name ?? '—'}</td>
                   <td className="px-4 py-2.5 text-muted-foreground">
