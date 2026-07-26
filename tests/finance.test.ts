@@ -158,6 +158,42 @@ describe('finanzas — orquestación', () => {
     expect(b.pendingCents).toBe(0n)
   })
 
+  it('config: con DOS vigentes (índice caído) devuelve el más reciente, no uno al azar', async () => {
+    // El índice payroll_config_vigente_uq impide este estado. Se lo baja a
+    // propósito para probar la defensa en profundidad: si algún día ese índice
+    // no estuviera (una base nueva mal armada), la lectura tiene que seguir
+    // siendo DETERMINISTA. Sin orderBy, Postgres puede devolver cualquiera de
+    // las dos filas y el descuento por falta "cambia solo" entre consultas.
+    await prisma.$executeRawUnsafe('DROP INDEX IF EXISTS payroll_config_vigente_uq')
+    try {
+      const ins = (id: string, cents: number, from: string) =>
+        prisma.$executeRawUnsafe(
+          `INSERT INTO payroll_config (id,"absentDeductionCents","effectiveFrom","createdAt","updatedAt") VALUES ($1,$2,$3,now(),now())`,
+          id,
+          cents,
+          new Date(`${from}T00:00:00.000Z`),
+        )
+      // Se inserta el VIEJO último a propósito: si la lectura dependiera del
+      // orden físico de inserción, devolvería éste y el test fallaría.
+      await ins('cfg-nuevo', 4_000_000, '2026-09-10')
+      await ins('cfg-viejo', 3_000_000, '2026-01-01')
+
+      expect(await prisma.payrollConfig.count({ where: { effectiveTo: null, deletedAt: null } })).toBe(2)
+      expect(await getAbsentDeductionCents(prisma)).toBe(4_000_000n) // el más reciente
+
+      // Y al versionar se pisa el más reciente, no el viejo.
+      await setAbsentDeductionCents(prisma, 4_500_000n, workDateFromKey('2026-09-10'), ACTOR)
+      expect(await getAbsentDeductionCents(prisma)).toBe(4_500_000n)
+      const viejo = await prisma.payrollConfig.findFirstOrThrow({ where: { id: 'cfg-viejo' } })
+      expect(viejo.absentDeductionCents).toBe(3_000_000n) // intacto
+    } finally {
+      await prisma.$executeRawUnsafe('DELETE FROM payroll_config')
+      await prisma.$executeRawUnsafe(
+        `CREATE UNIQUE INDEX IF NOT EXISTS payroll_config_vigente_uq ON payroll_config ((true)) WHERE "effectiveTo" IS NULL AND "deletedAt" IS NULL`,
+      )
+    }
+  })
+
   it('config: cambiar el descuento el MISMO día que se cargó el vigente NO viola el CHECK', async () => {
     const HOY = D('2026-09-10')
     await setAbsentDeductionCents(prisma, 3_000_000n, HOY, ACTOR)

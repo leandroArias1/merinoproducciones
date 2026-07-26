@@ -67,6 +67,24 @@ describe('documentId: unique parcial (re-contratación)', () => {
     })
   })
 
+  it('un SUSPENDIDO sigue ocupando su documento, y el mensaje lo explica', async () => {
+    // Suspendido (active=false) NO es lo mismo que dado de baja (deletedAt).
+    // El documento sigue tomado, y el mensaje tiene que decir por qué y cómo
+    // liberarlo: hablar de un "empleado activo" mandaba a mirar a alguien que
+    // en la lista figura como inactivo.
+    const id = await createEmployee(prisma, emp({ documentId: '30111222', firstName: 'Susana' }), ACTOR)
+    await updateEmployee(prisma, id, { ...emp({ documentId: '30111222', firstName: 'Susana' }), active: false }, ACTOR)
+
+    await expect(createEmployee(prisma, emp({ documentId: '30111222' }), ACTOR)).rejects.toMatchObject({
+      code: 'CONFLICT',
+      message: expect.stringContaining('suspendido'),
+    })
+    // Y nombra a quién lo tiene, para no dejar al usuario buscando.
+    await expect(createEmployee(prisma, emp({ documentId: '30111222' }), ACTOR)).rejects.toMatchObject({
+      message: expect.stringContaining('Susana'),
+    })
+  })
+
   it('alta con DNI de alguien DADO DE BAJA funciona (re-contratación)', async () => {
     const id = await createEmployee(prisma, emp({ documentId: '30111222', firstName: 'Viejo' }), ACTOR)
     await softDeleteEmployee(prisma, id, ACTOR)

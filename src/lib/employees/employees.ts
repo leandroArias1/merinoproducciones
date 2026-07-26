@@ -45,15 +45,29 @@ async function writeEmployeeAudit(
   })
 }
 
-/** DNI único ENTRE LOS ACTIVOS (findFirst + deletedAt:null): re-contratar el DNI
- *  de alguien dado de baja funciona; el de alguien activo falla. */
+/**
+ * DNI único entre los NO DADOS DE BAJA (findFirst + deletedAt:null):
+ * re-contratar el documento de alguien dado de baja funciona; el de alguien
+ * que sigue en el legajo, no.
+ *
+ * Ojo con la diferencia, que es la que confunde: un empleado SUSPENDIDO
+ * (`active=false`) sigue ocupando su documento, porque no está dado de baja.
+ * El mensaje lo dice y explica cómo liberarlo — antes hablaba de un "empleado
+ * activo" y el usuario se quedaba mirando a alguien que figuraba inactivo.
+ */
 async function assertDocumentFree(db: Db, documentId: string, exceptId?: string): Promise<void> {
   const clash = await db.employee.findFirst({
     where: { documentId, deletedAt: null, ...(exceptId ? { NOT: { id: exceptId } } : {}) },
-    select: { id: true },
+    select: { id: true, firstName: true, lastName: true, active: true },
   })
   if (clash) {
-    throw new ActionError('CONFLICT', `Ya hay un empleado activo con el documento ${documentId}.`)
+    const quien = `${clash.lastName}, ${clash.firstName}`
+    throw new ActionError(
+      'CONFLICT',
+      clash.active
+        ? `El documento ${documentId} ya es de ${quien}.`
+        : `El documento ${documentId} ya es de ${quien}, que está suspendido. Si dejó de trabajar, dale de baja el legajo para liberar el documento.`,
+    )
   }
 }
 

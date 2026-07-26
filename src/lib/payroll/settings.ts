@@ -11,9 +11,26 @@ import { writePayrollAudit } from './audit'
 
 type Db = PrismaClient
 
+/**
+ * El vigente es UNO SOLO: lo garantiza el índice parcial único
+ * `payroll_config_vigente_uq` (sobre la expresión `(true)` con
+ * `WHERE effectiveTo IS NULL AND deletedAt IS NULL`).
+ *
+ * El `orderBy` es defensa en profundidad, no redundancia: sin él, un
+ * `findFirst` sobre varias filas devuelve CUALQUIERA, y Postgres puede cambiar
+ * de respuesta entre consultas según el plan. Si ese índice alguna vez no
+ * estuviera —al armar una base nueva, por ejemplo—, el síntoma sería un
+ * descuento por falta que "cambia solo", silencioso y no reproducible. Con el
+ * orderBy, el peor caso pasa a ser determinista: siempre el más reciente.
+ */
+const VIGENTE = {
+  where: { effectiveTo: null, deletedAt: null },
+  orderBy: { effectiveFrom: 'desc' },
+} as const
+
 /** Descuento por falta vigente (centavos), o null si no hay config. */
 export async function getAbsentDeductionCents(db: Db): Promise<bigint | null> {
-  const row = await db.payrollConfig.findFirst({ where: { effectiveTo: null, deletedAt: null }, select: { absentDeductionCents: true } })
+  const row = await db.payrollConfig.findFirst({ ...VIGENTE, select: { absentDeductionCents: true } })
   return row?.absentDeductionCents ?? null
 }
 
@@ -33,7 +50,7 @@ export async function getAbsentDeductionCents(db: Db): Promise<bigint | null> {
 export async function setAbsentDeductionCents(db: Db, cents: bigint, effectiveDate: Date, actorId: string): Promise<boolean> {
   if (cents < 0n) throw new Error('El descuento no puede ser negativo.')
   const vigente = await db.payrollConfig.findFirst({
-    where: { effectiveTo: null, deletedAt: null },
+    ...VIGENTE,
     select: { id: true, absentDeductionCents: true, effectiveFrom: true },
   })
   if (vigente && vigente.absentDeductionCents === cents) return false // sin cambio
