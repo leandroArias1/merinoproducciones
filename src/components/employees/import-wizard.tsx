@@ -8,8 +8,10 @@ import { StatusBadge } from '@/components/events/status-badge'
 import { previewImportAction, commitImportAction } from '~/app/admin/empleados/actions'
 import type { ImportPreview } from '@/lib/employees/import'
 
-const EJEMPLO = `nombre,apellido,DNI,telefono,cargo,categoria,fecha de ingreso
-Ana,Pérez,40111222,11-5555-5555,Sonido,Jornada completa L-V,2026-03-01`
+// Sin fila de títulos a propósito: es la forma más corta de mostrar que no
+// hace falta, que es justamente lo que el usuario no sabía.
+const EJEMPLO = `Ana,Pérez,40111222,11-5555-5555,Sonido,Jornada completa L-V,2026-03-01
+Juan,Gómez,38222333,11-4444-4444,Luces,Media jornada L-M,2025-08-15`
 
 export function ImportWizard() {
   const router = useRouter()
@@ -90,8 +92,9 @@ export function ImportWizard() {
           className="w-full rounded-md border bg-background p-3 font-mono text-xs outline-none focus-visible:border-primary"
         />
         <p className="text-xs text-muted-foreground">
-          Columnas: nombre, apellido, DNI, teléfono, cargo, categoría, fecha de ingreso. Separador
-          coma o punto y coma.
+          Pegá o subí un CSV con las columnas en este orden: nombre, apellido, DNI, teléfono, cargo,
+          categoría, fecha de ingreso. <span className="text-foreground">No hace falta fila de títulos.</span>{' '}
+          Si igual la ponés, se reconoce sola. Separador coma o punto y coma.
         </p>
         <Button size="sm" onClick={doPreview} disabled={pending || !csv.trim()}>
           Previsualizar

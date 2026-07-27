@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 import { prisma } from '@/lib/db'
 import type { PrismaClient } from '@/generated/prisma/client'
-import { buildImportPreview, commitImport, parseCsv } from '@/lib/employees/import'
+import { buildImportPreview, commitImport, looksLikeHeader, parseCsv } from '@/lib/employees/import'
 import { createCategory } from '@/lib/employees/categories'
 import { createEmployee } from '@/lib/employees/employees'
 import { dowBA } from '@/lib/attendance'
@@ -107,9 +107,13 @@ describe('importador CSV', () => {
     expect(await prisma.employee.count({ where: { documentId: '40222333', deletedAt: null } })).toBe(0)
   })
 
-  it('cabecera sin columnas obligatorias → headerError, sin filas', async () => {
-    const preview = await buildImportPreview(prisma, 'foo,bar\n1,2')
+  it('cabecera REAL pero sin columnas obligatorias → headerError, sin filas', async () => {
+    // Se reconoce como cabecera (nombre + apellido + telefono son títulos
+    // conocidos) pero le falta el DNI. Si el usuario escribió títulos, los
+    // queremos completos.
+    const preview = await buildImportPreview(prisma, 'nombre,apellido,telefono\nAna,Pérez,11-5555')
     expect(preview.headerError).toMatch(/Faltan columnas obligatorias/)
+    expect(preview.headerError).toMatch(/DNI/)
     expect(preview.rows).toHaveLength(0)
   })
 
@@ -126,6 +130,87 @@ describe('importador CSV', () => {
     const reasons = preview.rows.filter((r) => r.status === 'skip').map((r) => r.reason ?? '')
     expect(reasons.some((r) => /DNI inválido/.test(r))).toBe(true)
     expect(reasons.some((r) => /futura/.test(r))).toBe(true)
+  })
+})
+
+/**
+ * El CSV que el usuario exporta de su planilla NO trae fila de títulos. Antes
+ * la primera fila se leía siempre como cabecera: se comía a la primera persona
+ * y encima cortaba con "Faltan columnas obligatorias". Orden fijo:
+ * nombre, apellido, DNI, teléfono, cargo, categoría, fecha de ingreso.
+ */
+describe('importador CSV — sin fila de encabezados', () => {
+  async function catCompleta() {
+    return createCategory(prisma, {
+      name: 'Jornada completa L-V',
+      description: '',
+      days: [{ dayOfWeek: 1, startMinute: 540, endMinute: 1020 }],
+    })
+  }
+
+  it('CSV sin encabezados se acepta (el caso real que fallaba en prod)', async () => {
+    await catCompleta()
+    const csv = 'Leandro,Arias,40751512,2612113198,sonido,Jornada completa L-V,2022-03-01'
+
+    const preview = await buildImportPreview(prisma, csv)
+    expect(preview.headerError).toBeUndefined()
+    expect(preview.toCreate).toBe(1)
+    expect(preview.toSkip).toBe(0)
+    // La primera fila NO se perdió como cabecera, y cada dato cayó en su columna.
+    expect(preview.rows[0].values).toMatchObject({
+      firstName: 'Leandro',
+      lastName: 'Arias',
+      documentId: '40751512',
+      phone: '2612113198',
+      position: 'sonido',
+      category: 'Jornada completa L-V',
+      hireDate: '2022-03-01',
+    })
+
+    const res = await commitImport(prisma, csv, ACTOR)
+    expect(res.created).toBe(1)
+    const emp = await prisma.employee.findFirstOrThrow({ where: { documentId: '40751512', deletedAt: null } })
+    expect(emp.firstName).toBe('Leandro')
+    expect(emp.position).toBe('sonido')
+    expect(emp.hireDate?.toISOString().slice(0, 10)).toBe('2022-03-01')
+  })
+
+  it('varias filas sin encabezado se crean todas', async () => {
+    await catCompleta()
+    const csv = [
+      'Leandro,Arias,40751512,2612113198,sonido,Jornada completa L-V,2022-03-01',
+      'Marta,Suárez,38222333,2611111111,luces,,2023-05-10',
+      'Pedro,Núñez,29888777,,montaje,Jornada completa L-V,',
+    ].join('\n')
+
+    const preview = await buildImportPreview(prisma, csv)
+    expect(preview.toCreate).toBe(3)
+    expect(preview.rows.map((r) => r.rowNumber)).toEqual([1, 2, 3]) // sin cabecera, la fila 1 es la 1
+    expect((await commitImport(prisma, csv, ACTOR)).created).toBe(3)
+  })
+
+  it('las validaciones por fila siguen aplicando sin encabezado', async () => {
+    const csv = [
+      'Leti,Ras,ABC12345,,cargo,,2026-03-01', // DNI con letras
+      'Cor,Ta,123456,,cargo,,2026-03-01', // DNI de 6 dígitos
+      'Fu,Turo,40999888,,cargo,,2999-01-01', // fecha futura
+      'Ok,Persona,40111000,,cargo,,2026-03-01', // válida
+    ].join('\n')
+
+    const preview = await buildImportPreview(prisma, csv)
+    expect(preview.headerError).toBeUndefined()
+    expect(preview.toCreate).toBe(1)
+    const reasons = preview.rows.filter((r) => r.status === 'skip').map((r) => r.reason ?? '')
+    expect(reasons.some((r) => /DNI inválido/.test(r))).toBe(true)
+    expect(reasons.some((r) => /futura/.test(r))).toBe(true)
+  })
+
+  it('detecta cabecera vs datos sin confundirse', () => {
+    expect(looksLikeHeader(['nombre', 'apellido', 'DNI'])).toBe(true)
+    expect(looksLikeHeader(['Nombre', 'Apellido', 'Documento', 'Tel'])).toBe(true)
+    expect(looksLikeHeader(['Leandro', 'Arias', '40751512', '2612113198', 'sonido'])).toBe(false)
+    // Un apellido "Fecha" o un cargo "Sonido" no alcanzan para creerse cabecera.
+    expect(looksLikeHeader(['Ana', 'Fecha', '40111222', '', 'sonido'])).toBe(false)
   })
 })
 

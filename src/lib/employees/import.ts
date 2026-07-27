@@ -106,6 +106,29 @@ const HEADER_SYNONYMS: Record<string, Field> = {
 
 const REQUIRED: Field[] = ['firstName', 'lastName', 'documentId']
 
+/**
+ * Orden FIJO de columnas cuando el CSV viene SIN fila de títulos. Es el orden
+ * en el que el usuario exporta la planilla, y el que dice el texto de ayuda.
+ */
+const POSITIONAL: Field[] = ['firstName', 'lastName', 'documentId', 'phone', 'position', 'category', 'hireDate']
+
+/**
+ * ¿La primera fila son TÍTULOS o ya son datos?
+ *
+ * Antes se asumía siempre título, así que un CSV de datos directos se comía la
+ * primera persona y encima fallaba con "Faltan columnas obligatorias".
+ *
+ * Criterio: DOS o más celdas que sean nombres de columna conocidos. Con una
+ * sola alcanzaría para confundirse (un cargo podría llamarse "Sonido" y un
+ * apellido "Fecha"), y una cabecera de verdad siempre trae al menos tres
+ * (nombre, apellido, DNI). En la duda gana "son datos": perder una fila por no
+ * reconocer una cabecera rara es peor que mostrarla en el preview y que el
+ * usuario la vea salteada.
+ */
+export function looksLikeHeader(row: string[]): boolean {
+  return row.filter((cell) => HEADER_SYNONYMS[norm(cell)] !== undefined).length >= 2
+}
+
 // ── Fechas ──────────────────────────────────────────────────────────────────
 
 /** Devuelve 'YYYY-MM-DD' | '' si vacío | null si inválida. */
@@ -127,7 +150,7 @@ function parseHireDate(raw: string): string | null {
 export type RowStatus = 'create' | 'skip'
 
 export interface ImportRowResult {
-  rowNumber: number // 1-based (fila de datos, sin contar la cabecera)
+  rowNumber: number // 1-based sobre las filas de DATOS (la cabecera, si la hay, no cuenta)
   values: Record<Field, string>
   status: RowStatus
   reason?: string
@@ -148,16 +171,24 @@ async function classify(db: Db, csvText: string): Promise<{ headerError?: string
   const cells = parseCsv(csvText)
   if (cells.length === 0) return { headerError: 'El archivo está vacío.', rows: [] }
 
-  // Cabecera → índice de cada campo.
-  const header = cells[0].map((h) => HEADER_SYNONYMS[norm(h)])
-  const colOf = (f: Field) => header.indexOf(f)
-  const missing = REQUIRED.filter((f) => colOf(f) === -1)
-  if (missing.length > 0) {
-    const nice = { firstName: 'nombre', lastName: 'apellido', documentId: 'DNI' }
-    return { headerError: `Faltan columnas obligatorias: ${missing.map((m) => nice[m as keyof typeof nice]).join(', ')}.`, rows: [] }
+  // Layout de columnas: por cabecera si la hay, por posición fija si no.
+  const hasHeader = looksLikeHeader(cells[0])
+  let colOf: (f: Field) => number
+  if (hasHeader) {
+    const header = cells[0].map((h) => HEADER_SYNONYMS[norm(h)])
+    colOf = (f) => header.indexOf(f)
+    // Solo se exige cuando el usuario SÍ escribió títulos: si los puso, los
+    // queremos completos. Sin títulos no hay nada que reclamar.
+    const missing = REQUIRED.filter((f) => colOf(f) === -1)
+    if (missing.length > 0) {
+      const nice = { firstName: 'nombre', lastName: 'apellido', documentId: 'DNI' }
+      return { headerError: `Faltan columnas obligatorias: ${missing.map((m) => nice[m as keyof typeof nice]).join(', ')}.`, rows: [] }
+    }
+  } else {
+    colOf = (f) => POSITIONAL.indexOf(f)
   }
 
-  const dataRows = cells.slice(1)
+  const dataRows = hasHeader ? cells.slice(1) : cells
   const get = (row: string[], f: Field) => (colOf(f) >= 0 ? (row[colOf(f)] ?? '').trim() : '')
 
   // Datos de contexto (una query cada uno: sin N+1).
