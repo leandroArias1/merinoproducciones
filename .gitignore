@@ -26,3 +26,5 @@ next-env.d.ts
 !.env.example
 
 .vscode/
+# Script de validación de una sola vez (no va al repo)
+scripts/validate-payroll.ts
