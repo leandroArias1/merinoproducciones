@@ -127,6 +127,15 @@ export const grantAccessAction = action(
   },
 )
 
+/**
+ * Cambia el rol de la cuenta de acceso. La usan los DOS lugares desde donde se
+ * edita el rol: el panel "Acceso a la app" del legajo y el form de "Editar
+ * empleado" — una sola operación, dos puntos de entrada.
+ *
+ * Por eso revalida las dos pantallas: revalidar solo el legajo dejaba a
+ * "Editar" mostrando el rol viejo al volver. Mismo bug de pantalla vieja que
+ * ya nos pasó en caja y en liquidaciones.
+ */
 export const setUserRoleAction = action(
   ['ADMIN'],
   async (ctx, employeeId: string, role: string): Promise<ActionResult> => {
@@ -135,6 +144,7 @@ export const setUserRoleAction = action(
     try {
       await setUserRole(prisma, employeeId, role as AppRole, ctx.actorId)
       revalidatePath(`/admin/empleados/${employeeId}`)
+      revalidatePath(`/admin/empleados/${employeeId}/editar`)
       return { ok: true }
     } catch (e) {
       if (e instanceof ActionError) return { ok: false, error: e.message }

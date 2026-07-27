@@ -106,7 +106,9 @@ export default async function EmpleadoDetallePage({ params }: { params: Promise<
         </div>
       </div>
 
-      <div className="mt-8 border-t pt-6">
+      {/* id="acceso": desde "Editar empleado" se enlaza acá cuando todavía no
+          hay cuenta de acceso y por eso no hay rol que cambiar. */}
+      <div id="acceso" className="mt-8 scroll-mt-6 border-t pt-6">
         <EmployeeAccessPanel employeeId={e.id} employeeEmail={e.email} access={access} />
       </div>
     </div>

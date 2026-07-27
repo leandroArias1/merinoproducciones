@@ -4,6 +4,8 @@ import { useState, useTransition } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { ShieldOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   employeeSchema,
@@ -11,24 +13,51 @@ import {
   EMPLOYMENT_TYPES,
   EMPLOYMENT_TYPE_LABELS,
 } from '@/lib/employees/schema'
-import { createEmployeeAction, updateEmployeeAction } from '~/app/admin/empleados/actions'
+import type { AppRole } from '@/lib/auth/access'
+import type { EmployeeAccess } from '@/lib/users/access'
+import { createEmployeeAction, updateEmployeeAction, setUserRoleAction } from '~/app/admin/empleados/actions'
 
 const inputCls = 'h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-primary'
+
+const ROLE_LABELS: Record<AppRole, string> = {
+  ADMIN: 'Administrador',
+  SUPERVISOR: 'Supervisor',
+  EMPLOYEE: 'Empleado',
+}
+const ROLES: AppRole[] = ['ADMIN', 'SUPERVISOR', 'EMPLOYEE']
 
 export interface EmployeeInitial extends EmployeeFormValues {
   id: string
 }
 
+/**
+ * Alta y edición de empleado.
+ *
+ * El ROL no es un campo del empleado: vive en su cuenta de acceso (`User`), y
+ * un empleado puede no tener cuenta todavía. Por eso el rol NO entra al
+ * `employeeSchema` ni viaja con `updateEmployeeAction`: se muestra acá por
+ * comodidad —están todos los datos juntos— pero se guarda con la MISMA action
+ * que usa el panel de "Acceso a la app" del legajo (`setUserRoleAction`), y
+ * solo si el usuario efectivamente lo cambió.
+ *
+ * Sin cuenta de acceso no se dibuja el desplegable: un select que no guarda
+ * nada es peor que no tenerlo.
+ */
 export function EmployeeForm({
   categories,
   initial,
+  access,
 }: {
   categories: { id: string; name: string }[]
   initial?: EmployeeInitial
+  /** Estado de acceso del empleado. Solo en edición; en el alta todavía no existe. */
+  access?: EmployeeAccess
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const roleInicial: AppRole = access?.role ?? 'EMPLOYEE'
+  const [role, setRole] = useState<AppRole>(roleInicial)
 
   const {
     register,
@@ -60,6 +89,20 @@ export function EmployeeForm({
         setError(res.error)
         return
       }
+
+      // El rol va en una operación aparte porque es otra entidad. Solo si
+      // cambió: si no, cada "Guardar cambios" escribiría un AuditLog de un
+      // cambio de rol que nunca ocurrió.
+      if (initial && access?.active && role !== roleInicial) {
+        const rol = await setUserRoleAction(initial.id, role)
+        if (!rol.ok) {
+          // Los datos YA se guardaron: decirlo, y no navegar, para que el
+          // usuario pueda reintentar el rol sin perder de vista qué falló.
+          setError(`Se guardaron los datos del empleado, pero el rol no se pudo cambiar: ${rol.error}`)
+          return
+        }
+      }
+
       router.push(initial ? `/admin/empleados/${initial.id}` : '/admin/empleados')
       router.refresh()
     })
@@ -113,6 +156,52 @@ export function EmployeeForm({
           Activo
         </label>
       </div>
+
+      {initial && access && (
+        <div className="space-y-2 border-t pt-4">
+          <h2 className="text-sm font-medium">Acceso a la app</h2>
+          {access.active ? (
+            <>
+              <div className="max-w-xs">
+                <label className="text-sm font-medium" htmlFor="rol">
+                  Rol
+                </label>
+                <select
+                  id="rol"
+                  className={`${inputCls} mt-1.5`}
+                  value={role}
+                  disabled={pending}
+                  onChange={(e) => setRole(e.target.value as AppRole)}
+                >
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {ROLE_LABELS[r]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Se guarda junto con el resto de los datos. Define qué pantallas ve{' '}
+                {access.email ? <span className="font-medium">{access.email}</span> : 'esta persona'} al entrar.
+              </p>
+            </>
+          ) : (
+            // Sin cuenta (o con el acceso desactivado) no hay rol que cambiar:
+            // en vez de un desplegable fantasma, el camino para arreglarlo.
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border bg-secondary/40 px-3 py-2.5 text-sm">
+              <ShieldOff className="size-4 text-muted-foreground" />
+              <span className="text-muted-foreground">
+                {access.hasUser
+                  ? 'Este empleado tiene el acceso a la app desactivado, así que no tiene rol.'
+                  : 'Este empleado todavía no tiene acceso a la app, así que no tiene rol.'}
+              </span>
+              <Link href={`/admin/empleados/${initial.id}#acceso`} className="font-medium text-primary hover:underline">
+                {access.hasUser ? 'Volver a habilitarlo' : 'Crear el acceso'}
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
 
       {error && (
         <p role="alert" className="text-sm text-destructive">
