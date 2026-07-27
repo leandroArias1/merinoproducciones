@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { action, ActionError } from '@/lib/auth/action'
 import { prisma } from '@/lib/db'
-import { closePeriod, payPeriod, reopenPeriod } from '@/lib/payroll/close'
+import { closeBlockedItem, closePeriod, payPeriod, reopenPeriod } from '@/lib/payroll/close'
 import { bulkSetSalary } from '@/lib/payroll/salary'
 import { todayKeyBA, workDateFromKey } from '@/lib/attendance/timezone'
 
@@ -49,6 +49,23 @@ export const payPeriodAction = action(['ADMIN'], async (ctx, year: number, month
   if (err) return { ok: false, error: err }
   try {
     await payPeriod(prisma, year, month, ctx.actorId)
+    revalidateAdmin()
+    return { ok: true }
+  } catch (e) {
+    return fail(e)
+  }
+})
+
+/**
+ * Cierra el recibo de UN empleado que había quedado bloqueado, sin reabrir el
+ * mes (reabrir manda los otros recibos a DRAFT y los recalcula).
+ */
+export const closeItemAction = action(['ADMIN'], async (ctx, year: number, month: number, employeeId: string): Promise<ActionResult> => {
+  const err = validPeriod(year, month)
+  if (err) return { ok: false, error: err }
+  if (!employeeId) return { ok: false, error: 'Empleado inválido.' }
+  try {
+    await closeBlockedItem(prisma, year, month, employeeId, ctx.actorId)
     revalidateAdmin()
     return { ok: true }
   } catch (e) {

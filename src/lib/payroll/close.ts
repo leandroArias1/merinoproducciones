@@ -116,6 +116,31 @@ export async function closePeriod(db: Db, year: number, month: number, actorId: 
 }
 
 /**
+ * Cierra INDIVIDUALMENTE el ítem de un empleado que había quedado BLOCKED,
+ * una vez resuelto el día que lo trababa. Es lo que promete el diálogo de
+ * cierre ("podés cerrarlos después") y lo que antes no existía: la única salida
+ * era reabrir todo el mes, que manda los otros recibos a DRAFT.
+ *
+ * Usa `upsertAndCloseItem`, EXACTAMENTE la misma función que el cierre de fin de
+ * mes: mismo `computePayrollItem`, mismo snapshot, mismas líneas, misma
+ * auditoría. El número tiene que ser idéntico al que habría salido cerrando con
+ * el resto — por eso no hay una variante "individual" del cálculo.
+ */
+export async function closeBlockedItem(db: Db, year: number, month: number, employeeId: string, actorId: string): Promise<void> {
+  const period = await db.payrollPeriod.findFirst({ where: { year, month, deletedAt: null }, select: { id: true, status: true } })
+  if (!period) throw new ActionError('NOT_FOUND', 'Período no encontrado.')
+  if (period.status === 'PAID') throw new ActionError('CONFLICT', 'Un período PAGADO no se modifica. Corregí con un ajuste en el mes siguiente.')
+
+  const roster = await buildPeriodRoster(db, year, month, { employeeIds: [employeeId] })
+  if (roster.length === 0) throw new ActionError('NOT_FOUND', 'El empleado no estuvo activo en este período.')
+
+  const r = await upsertAndCloseItem(db, period.id, roster[0], actorId)
+  if (r === 'blocked') {
+    throw new ActionError('CONFLICT', 'Todavía tiene días sin verificar en el mes. Resolvelos en Asistencia y volvé a intentar.')
+  }
+}
+
+/**
  * BAJA a mitad de mes: genera y CIERRA el ítem del empleado con el tramo
  * proporcional a `bajaDate`. Queda cerrado individualmente; el cierre de fin de
  * mes no lo recalcula. Lo dispara la acción de baja (deleteEmployeeAction).
@@ -149,11 +174,31 @@ export async function reopenPeriod(db: Db, year: number, month: number, actorId:
   })
 }
 
-/** Marca un período CLOSED como PAID (y sus ítems cerrados). Auditado. */
+/**
+ * Marca un período CLOSED como PAID (y sus ítems cerrados). Auditado.
+ *
+ * RECHAZA si quedan ítems BLOCKED. Pagar es la única operación sin vuelta atrás
+ * (un PAID no se reabre), así que con un bloqueado adentro convertía un problema
+ * reparable —resolver el día y cerrar ese recibo— en uno permanente: ese
+ * empleado no cobraba ese mes nunca más.
+ */
 export async function payPeriod(db: Db, year: number, month: number, actorId: string): Promise<void> {
   const period = await db.payrollPeriod.findFirst({ where: { year, month, deletedAt: null }, select: { id: true, status: true } })
   if (!period) throw new ActionError('NOT_FOUND', 'Período no encontrado.')
   if (period.status !== 'CLOSED') throw new ActionError('CONFLICT', 'Solo se paga un período CERRADO.')
+
+  const pendientes = await db.payrollItem.findMany({
+    where: { periodId: period.id, deletedAt: null, status: 'BLOCKED' },
+    select: { employee: { select: { firstName: true, lastName: true } } },
+  })
+  if (pendientes.length > 0) {
+    const nombres = pendientes.map((p) => `${p.employee.lastName}, ${p.employee.firstName}`).sort()
+    const lista = nombres.slice(0, 3).join(' · ') + (nombres.length > 3 ? ` y ${nombres.length - 3} más` : '')
+    throw new ActionError(
+      'CONFLICT',
+      `Hay ${pendientes.length} empleado(s) sin liquidar (${lista}). Resolvé sus días sin verificar y cerrá su recibo antes de pagar: un período pagado no se puede reabrir.`,
+    )
+  }
 
   await db.$transaction(async (tx) => {
     await tx.payrollItem.updateMany({ where: { periodId: period.id, deletedAt: null, status: 'CLOSED' }, data: { status: 'PAID' } })

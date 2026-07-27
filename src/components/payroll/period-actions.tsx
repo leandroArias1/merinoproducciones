@@ -12,7 +12,20 @@ type Status = 'OPEN' | 'CLOSED' | 'PAID' | 'NONE'
  * confirman diciendo qué pasa —y "marcar pagado" avisa que es sin vuelta atrás,
  * que es la única de las tres que no se puede deshacer.
  */
-export function PeriodActions({ year, month, status, canClose }: { year: number; month: number; status: Status; canClose: boolean }) {
+export function PeriodActions({
+  year,
+  month,
+  status,
+  canClose,
+  pendientes = 0,
+}: {
+  year: number
+  month: number
+  status: Status
+  canClose: boolean
+  /** Empleados del mes todavía sin recibo. Con uno solo, pagar queda deshabilitado. */
+  pendientes?: number
+}) {
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
       {(status === 'OPEN' || status === 'NONE') && (
@@ -30,15 +43,24 @@ export function PeriodActions({ year, month, status, canClose }: { year: number;
       )}
       {status === 'CLOSED' && (
         <>
-          <ConfirmButton
-            size="sm"
-            title="¿Marcar el período como pagado?"
-            description="Esto no tiene vuelta atrás: un período pagado ya no se puede reabrir. Si después hay que corregir algo, se hace con un ajuste el mes siguiente."
-            confirmLabel="Sí, marcar pagado"
-            onConfirm={() => payPeriodAction(year, month)}
-          >
-            <BadgeCheck /> Marcar pagado
-          </ConfirmButton>
+          {pendientes > 0 ? (
+            // Pagar es la única acción sin vuelta atrás: con alguien sin recibo,
+            // pagar lo dejaría sin liquidar para siempre. El back también lo
+            // rechaza; esto es para que no llegue ni a intentarlo.
+            <Button size="sm" disabled title={`Hay ${pendientes} empleado(s) sin recibo. Generá sus recibos antes de pagar: un período pagado no se puede reabrir.`}>
+              <BadgeCheck /> Marcar pagado
+            </Button>
+          ) : (
+            <ConfirmButton
+              size="sm"
+              title="¿Marcar el período como pagado?"
+              description="Esto no tiene vuelta atrás: un período pagado ya no se puede reabrir. Si después hay que corregir algo, se hace con un ajuste el mes siguiente."
+              confirmLabel="Sí, marcar pagado"
+              onConfirm={() => payPeriodAction(year, month)}
+            >
+              <BadgeCheck /> Marcar pagado
+            </ConfirmButton>
+          )}
           <ConfirmButton
             size="sm"
             variant="secondary"

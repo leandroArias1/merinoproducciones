@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach, afterAll } from 'vitest'
 import { prisma } from '@/lib/db'
 import { workDateFromKey } from '@/lib/attendance/timezone'
 import { buildPeriodRoster } from '@/lib/payroll/build-input'
-import { closePeriod, generateBajaItem, reopenPeriod, payPeriod } from '@/lib/payroll/close'
+import { closeBlockedItem, closePeriod, generateBajaItem, reopenPeriod, payPeriod } from '@/lib/payroll/close'
+import { getPeriodDetail } from '@/lib/payroll/queries'
 import { bulkSetSalary } from '@/lib/payroll/salary'
 
 const ACTOR = 'admin-user-id'
@@ -178,5 +179,100 @@ describe('liquidaciones — orquestación', () => {
     // Pagar y confirmar que PAID no se reabre.
     await payPeriod(prisma, Y, M, ACTOR)
     await expect(reopenPeriod(prisma, Y, M, ACTOR)).rejects.toThrow(/PAGADO no se reabre/)
+  })
+})
+
+/**
+ * Bug real de prod: un día UNVERIFIED se resolvía DESPUÉS de cerrar el mes y el
+ * ítem seguía BLOCKED para siempre, porque la pantalla de un período cerrado
+ * mostraba el snapshot congelado y nadie lo volvía a evaluar. Peor: se podía
+ * marcar el mes como pagado, y un PAID no se reabre → ese empleado no cobraba
+ * ese mes nunca. El diálogo de cierre prometía justo lo contrario ("podés
+ * cerrarlos después").
+ */
+describe('bloqueado resuelto después del cierre', () => {
+  it('deja de bloquear, se cierra INDIVIDUALMENTE y los otros recibos quedan intactos', async () => {
+    const otros = []
+    for (let i = 0; i < 7; i++) {
+      const e = await mkEmployee({})
+      await mkSalary(e.id, LV)
+      otros.push(e.id)
+    }
+    const trabado = await mkEmployee({})
+    await mkSalary(trabado.id, LV)
+    await mkAtt(trabado.id, '2026-09-10', 'UNVERIFIED')
+
+    const s = await closePeriod(prisma, Y, M, ACTOR)
+    expect(s.closed).toBe(7)
+    expect(s.blocked).toBe(1)
+
+    // Foto EXACTA de los 7 recibos ya emitidos (incluye updatedAt: si alguno se
+    // reescribiera, aunque diera el mismo número, esto lo delata).
+    const antes = await prisma.payrollItem.findMany({ where: { employeeId: { in: otros } }, orderBy: { employeeId: 'asc' } })
+    expect(antes).toHaveLength(7)
+
+    // Antes de resolver: sigue bloqueado, y la fila sabe QUÉ día lo traba.
+    const bloqueado = (await getPeriodDetail(prisma, Y, M)).rows.find((r) => r.employeeId === trabado.id)!
+    expect(bloqueado.status).toBe('BLOCKED')
+    expect(bloqueado.blockingDayKey).toBe('2026-09-10')
+
+    // Cerrarlo así todavía tiene que fallar.
+    await expect(closeBlockedItem(prisma, Y, M, trabado.id, ACTOR)).rejects.toThrow(/sin verificar/)
+
+    // Se resuelve el día (como en prod: la asignación se cancela → ABSENT).
+    await prisma.attendance.updateMany({
+      where: { employeeId: trabado.id, workDate: workDateFromKey('2026-09-10') },
+      data: { status: 'ABSENT' },
+    })
+
+    // La pantalla del mes CERRADO ya lo muestra listo, sin reabrir nada.
+    const detail = await getPeriodDetail(prisma, Y, M)
+    expect(detail.status).toBe('CLOSED')
+    const fila = detail.rows.find((r) => r.employeeId === trabado.id)!
+    expect(fila.status).toBe('READY')
+    expect(fila.netCents).toBe(LV - DED)
+    expect(fila.blockingDayKey).toBeNull()
+
+    // Cierre individual: mismo cálculo que el cierre de fin de mes.
+    await closeBlockedItem(prisma, Y, M, trabado.id, ACTOR)
+    const item = await prisma.payrollItem.findFirstOrThrow({ where: { employeeId: trabado.id } })
+    expect(item.status).toBe('CLOSED')
+    expect(item.netCents).toBe(LV - DED) // 750.000 − 30.000, con su falta
+    expect(item.absentDays).toBe(1)
+    expect(await prisma.payrollLine.count({ where: { itemId: item.id } })).toBeGreaterThan(0) // tiene recibo
+
+    // Y el período NO se reabrió.
+    const period = await prisma.payrollPeriod.findFirstOrThrow({ where: { year: Y, month: M } })
+    expect(period.status).toBe('CLOSED')
+
+    // LO CRÍTICO: los otros 7 recibos, byte por byte, sin recalcular.
+    const despues = await prisma.payrollItem.findMany({ where: { employeeId: { in: otros } }, orderBy: { employeeId: 'asc' } })
+    expect(despues).toEqual(antes)
+  })
+
+  it('pagar un período con bloqueados es RECHAZADO, y nombra a quién falta', async () => {
+    const ok = await mkEmployee({})
+    const trabado = await mkEmployee({})
+    await mkSalary(ok.id, LV)
+    await mkSalary(trabado.id, LV)
+    await mkAtt(trabado.id, '2026-09-10', 'UNVERIFIED')
+    await closePeriod(prisma, Y, M, ACTOR)
+
+    await expect(payPeriod(prisma, Y, M, ACTOR)).rejects.toThrow(/sin liquidar/)
+    // Nombra al que falta, para no dejar al usuario buscándolo.
+    await expect(payPeriod(prisma, Y, M, ACTOR)).rejects.toThrow(/Emp2/)
+
+    // Sigue CERRADO (no quedó a medio pagar).
+    const period = await prisma.payrollPeriod.findFirstOrThrow({ where: { year: Y, month: M } })
+    expect(period.status).toBe('CLOSED')
+
+    // Resuelto y cerrado su recibo, ahora sí se paga.
+    await prisma.attendance.updateMany({
+      where: { employeeId: trabado.id, workDate: workDateFromKey('2026-09-10') },
+      data: { status: 'ABSENT' },
+    })
+    await closeBlockedItem(prisma, Y, M, trabado.id, ACTOR)
+    await payPeriod(prisma, Y, M, ACTOR)
+    expect((await prisma.payrollItem.findMany({ where: { periodId: period.id } })).every((i) => i.status === 'PAID')).toBe(true)
   })
 })

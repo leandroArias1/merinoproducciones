@@ -91,6 +91,13 @@ export interface EmployeePayroll {
   employeeId: string
   employeeName: string
   input: PayrollInput
+  /**
+   * PRIMER día sin resolver que lo bloquea ('YYYY-MM-DD'), o null si no hay.
+   * Existe para que la UI mande al usuario AL DÍA concreto: el link "Resolver"
+   * apuntaba a la lista genérica de días a revisar, que puede estar vacía —y
+   * entonces era un callejón sin salida.
+   */
+  blockingDayKey: string | null
 }
 
 /** Estados de asistencia que cuentan/bloquean. */
@@ -156,12 +163,13 @@ export async function buildPeriodRoster(db: Db, year: number, month: number, opt
 
     const att = (attByEmp.get(e.id) ?? []).filter((a) => a.key >= win.startKey && a.key <= win.endKey)
     const absentDays = att.filter((a) => a.status === ABSENT).length
-    const blocked = att.some((a) => BLOCKING.has(a.status))
+    const blockingDays = att.filter((a) => BLOCKING.has(a.status)).map((a) => a.key).sort()
 
     result.push({
       employeeId: e.id,
       employeeName: `${e.lastName}, ${e.firstName}`,
-      input: { daysInMonth: m.daysInMonth, segments, absentDays, deductionPerAbsentCents: deduction, blocked },
+      input: { daysInMonth: m.daysInMonth, segments, absentDays, deductionPerAbsentCents: deduction, blocked: blockingDays.length > 0 },
+      blockingDayKey: blockingDays[0] ?? null,
     })
   }
   return result

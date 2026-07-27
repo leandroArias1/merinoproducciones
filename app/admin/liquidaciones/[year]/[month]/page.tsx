@@ -6,6 +6,12 @@ import { getPeriodDetail, type ItemStatus } from '@/lib/payroll/queries'
 import { formatPesos, monthLabel } from '@/lib/payroll/format'
 import { StatusBadge } from '@/components/events/status-badge'
 import { PeriodActions } from '@/components/payroll/period-actions'
+import { CloseItemButton } from '@/components/payroll/close-item-button'
+
+/** Link "Resolver": al DÍA concreto que bloquea; si no se sabe, a la lista. */
+function resolverHref(dayKey: string | null): string {
+  return dayKey ? `/admin/asistencia?vista=dia&fecha=${dayKey}` : '/admin/asistencia?vista=revisar'
+}
 
 const ITEM_STATUS: Record<ItemStatus, { label: string; tone: 'success' | 'danger' | 'muted' | 'accent' }> = {
   READY: { label: 'Listo', tone: 'muted' },
@@ -30,6 +36,9 @@ export default async function PeriodoPage({ params }: { params: Promise<{ year: 
   const detail = await getPeriodDetail(prisma, y, m)
   const isOpen = detail.status === 'OPEN' || detail.status === 'NONE'
   const s = detail.summary
+  // Con el mes ya cerrado, todo lo que no tenga recibo sigue pendiente: los que
+  // siguen bloqueados y los que se destrabaron y todavía hay que cerrar.
+  const pendientes = detail.status === 'CLOSED' ? s.blocked + s.ready : 0
 
   return (
     <div>
@@ -45,8 +54,26 @@ export default async function PeriodoPage({ params }: { params: Promise<{ year: 
             </Link>
           </p>
         </div>
-        <PeriodActions year={y} month={m} status={detail.status} canClose={s.ready > 0} />
+        <PeriodActions year={y} month={m} status={detail.status} canClose={s.ready > 0} pendientes={pendientes} />
       </header>
+
+      {/* Mes cerrado con gente sin recibo: hay que terminarlos antes de pagar. */}
+      {pendientes > 0 && (
+        <div className="mb-4 rounded-lg border bg-secondary/40 px-4 py-3 text-sm">
+          <span className="inline-flex items-center gap-1.5 text-[var(--warning)] [&_svg]:size-4">
+            <AlertTriangle />
+            <span className="font-medium">
+              {pendientes} empleado(s) sin recibo en este mes.
+            </span>
+          </span>
+          <span className="ml-1 text-muted-foreground">
+            {s.ready > 0
+              ? 'Los que ya tienen sus días resueltos se cierran de a uno con “Generar recibo”, sin reabrir el mes.'
+              : 'Resolvé sus días sin verificar y después generá su recibo.'}{' '}
+            Hasta entonces el período no se puede marcar como pagado.
+          </span>
+        </div>
+      )}
 
       {/* Checklist de cierre (solo mientras está abierto) */}
       {isOpen && s.total > 0 && (
@@ -110,9 +137,13 @@ export default async function PeriodoPage({ params }: { params: Promise<{ year: 
                         <FileText /> Recibo
                       </Link>
                     ) : r.status === 'BLOCKED' ? (
-                      <Link href="/admin/asistencia?vista=revisar" className="text-xs text-muted-foreground underline">
+                      <Link href={resolverHref(r.blockingDayKey)} className="text-xs text-muted-foreground underline">
                         Resolver
                       </Link>
+                    ) : r.status === 'READY' && detail.status === 'CLOSED' ? (
+                      // Quedó destrabado DESPUÉS del cierre: se cierra solo él,
+                      // sin reabrir el mes ni tocar los recibos ya emitidos.
+                      <CloseItemButton year={y} month={m} employeeId={r.employeeId} employeeName={r.employeeName} netLabel={formatPesos(r.netCents)} />
                     ) : null}
                   </td>
                 </tr>

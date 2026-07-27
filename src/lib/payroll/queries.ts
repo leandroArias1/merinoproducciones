@@ -1,6 +1,6 @@
 import type { PrismaClient } from '@/generated/prisma/client'
 import { computePayrollItem } from '@/lib/domain/payroll'
-import { buildPeriodRoster } from './build-input'
+import { buildPeriodRoster, type EmployeePayroll } from './build-input'
 
 /**
  * Lecturas para la UI de liquidaciones. Los montos salen en BigInt (centavos);
@@ -36,6 +36,8 @@ export interface PeriodItemRow {
   absentDays: number
   status: ItemStatus
   itemId: string | null
+  /** Día que lo bloquea ('YYYY-MM-DD'), para linkear al día y no a una lista vacía. */
+  blockingDayKey: string | null
 }
 
 export interface PeriodDetail {
@@ -50,6 +52,18 @@ export interface PeriodDetail {
  * Detalle del período. Si está CLOSED/PAID muestra los ítems PERSISTIDOS; si está
  * OPEN (o no existe) calcula un PREVIEW en vivo (para el checklist de cierre),
  * respetando los ítems ya cerrados por baja.
+ *
+ * EXCEPCIÓN (bug real): en un período CLOSED, los ítems BLOCKED SÍ se vuelven a
+ * evaluar en vivo. Un BLOCKED no tiene snapshot que preservar (base 0, neto 0,
+ * sin líneas): es un "pendiente", no un recibo. Congelarlo hacía que un día ya
+ * resuelto siguiera figurando como bloqueado para siempre, y —si alguien marcaba
+ * el período como pagado— ese empleado no se liquidaba nunca, porque un PAID no
+ * se reabre. Los ítems CLOSED/PAID de al lado NO se tocan: siguen saliendo del
+ * snapshot congelado, byte por byte.
+ *
+ * En un período PAID no se re-evalúa: el mes ya está pagado y no hay acción
+ * posible, así que mostrarlo como "listo" sería mentir. `payPeriod` ahora impide
+ * llegar a ese estado con bloqueados.
  */
 export async function getPeriodDetail(db: Db, year: number, month: number): Promise<PeriodDetail> {
   const period = await db.payrollPeriod.findFirst({ where: { year, month, deletedAt: null }, select: { id: true, status: true } })
@@ -74,16 +88,35 @@ export async function getPeriodDetail(db: Db, year: number, month: number): Prom
   const rows: PeriodItemRow[] = []
 
   if (period && (period.status === 'CLOSED' || period.status === 'PAID')) {
+    // Roster SOLO de los bloqueados: nada de lo cerrado se recalcula.
+    const blockedIds = period.status === 'CLOSED' ? existing.filter((i) => i.status === 'BLOCKED').map((i) => i.employeeId) : []
+    const rosterById = new Map<string, EmployeePayroll>()
+    if (blockedIds.length > 0) {
+      for (const emp of await buildPeriodRoster(db, year, month, { employeeIds: blockedIds })) rosterById.set(emp.employeeId, emp)
+    }
+
     for (const i of existing) {
+      const employeeName = `${i.employee.lastName}, ${i.employee.firstName}`
+      const emp = rosterById.get(i.employeeId)
+      if (emp) {
+        const r = computePayrollItem(emp.input)
+        rows.push(
+          r.status === 'BLOCKED'
+            ? { employeeId: i.employeeId, employeeName, baseCents: 0n, deductionCents: 0n, netCents: 0n, absentDays: emp.input.absentDays, status: 'BLOCKED', itemId: i.id, blockingDayKey: emp.blockingDayKey }
+            : { employeeId: i.employeeId, employeeName, baseCents: r.baseCents, deductionCents: r.deductionCents, netCents: r.netCents, absentDays: r.absentDays, status: 'READY', itemId: i.id, blockingDayKey: null },
+        )
+        continue
+      }
       rows.push({
         employeeId: i.employeeId,
-        employeeName: `${i.employee.lastName}, ${i.employee.firstName}`,
+        employeeName,
         baseCents: i.baseCents,
         deductionCents: i.deductionCents,
         netCents: i.netCents,
         absentDays: i.absentDays,
         status: i.status as ItemStatus,
         itemId: i.id,
+        blockingDayKey: null,
       })
     }
   } else {
@@ -100,14 +133,15 @@ export async function getPeriodDetail(db: Db, year: number, month: number): Prom
           absentDays: ex.absentDays,
           status: ex.status as ItemStatus,
           itemId: ex.id,
+          blockingDayKey: null,
         })
         continue
       }
       const r = computePayrollItem(emp.input)
       if (r.status === 'BLOCKED') {
-        rows.push({ employeeId: emp.employeeId, employeeName: emp.employeeName, baseCents: 0n, deductionCents: 0n, netCents: 0n, absentDays: emp.input.absentDays, status: 'BLOCKED', itemId: ex?.id ?? null })
+        rows.push({ employeeId: emp.employeeId, employeeName: emp.employeeName, baseCents: 0n, deductionCents: 0n, netCents: 0n, absentDays: emp.input.absentDays, status: 'BLOCKED', itemId: ex?.id ?? null, blockingDayKey: emp.blockingDayKey })
       } else {
-        rows.push({ employeeId: emp.employeeId, employeeName: emp.employeeName, baseCents: r.baseCents, deductionCents: r.deductionCents, netCents: r.netCents, absentDays: r.absentDays, status: 'READY', itemId: ex?.id ?? null })
+        rows.push({ employeeId: emp.employeeId, employeeName: emp.employeeName, baseCents: r.baseCents, deductionCents: r.deductionCents, netCents: r.netCents, absentDays: r.absentDays, status: 'READY', itemId: ex?.id ?? null, blockingDayKey: null })
       }
     }
   }
