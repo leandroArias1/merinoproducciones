@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
+import { MoneyEcho } from '@/components/ui/money-echo'
 import { setDeductionAction } from '~/app/admin/caja/actions'
 
 /** Config del descuento por falta (versiona PayrollConfig). */
@@ -30,6 +31,7 @@ export function ConfigForm({ currentPesos }: { currentPesos: number | null }) {
       <div>
         <label className="block text-xs text-muted-foreground">Descuento por falta injustificada (pesos por día ABSENT)</label>
         <input type="number" min={0} value={pesos} onChange={(e) => setPesos(e.target.value)} placeholder="30000" className="mt-1 h-9 w-40 rounded-md border bg-background px-3 text-sm" />
+        <MoneyEcho raw={pesos} className="mt-1" />
       </div>
       <p className="text-xs text-muted-foreground">Se versiona: los meses ya liquidados conservan el valor que estaba vigente entonces.</p>
       <div className="flex items-center gap-2">

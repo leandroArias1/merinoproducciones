@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
+import { MoneyEcho } from '@/components/ui/money-echo'
 import { registerClientPaymentAction } from '~/app/admin/caja/actions'
 
 /** Registrar un pago (parcial) de cliente para un evento. Inline en la fila. */
@@ -43,6 +44,8 @@ export function PaymentForm({ eventId }: { eventId: string }) {
         placeholder="pesos"
         className="h-8 w-28 rounded-md border bg-background px-2 text-sm"
       />
+      {/* El eco va ANTES del botón: se lee el monto y recién después se confirma. */}
+      <MoneyEcho raw={pesos} />
       <Button size="sm" disabled={!valid} loading={pending} onClick={submit}>
         Cobrar
       </Button>

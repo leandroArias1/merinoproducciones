@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
+import { MoneyEcho } from '@/components/ui/money-echo'
 import { setEventPriceAction } from '~/app/admin/caja/actions'
 
 /** Cargar/editar el precio pactado + cliente de un evento (la cuenta por cobrar). */
@@ -47,6 +48,7 @@ export function SetPriceForm({
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
       <input type="number" min={0} autoFocus value={pesos} onChange={(e) => setPesos(e.target.value)} placeholder="precio $" className="h-8 w-28 rounded-md border bg-background px-2 text-sm" />
+      <MoneyEcho raw={pesos} />
       <select value={clientId} onChange={(e) => setClientId(e.target.value)} className="h-8 rounded-md border bg-background px-2 text-sm">
         <option value="">Cliente…</option>
         {clients.map((c) => (

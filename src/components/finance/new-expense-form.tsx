@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
+import { MoneyEcho } from '@/components/ui/money-echo'
 import { registerExpenseAction } from '~/app/admin/caja/actions'
 
 const inputCls = 'h-9 w-full rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-primary'
@@ -68,6 +69,7 @@ export function NewExpenseForm({
         <div>
           <label className="block text-xs text-muted-foreground">Monto (pesos)</label>
           <input type="number" min={0} className={inputCls} value={pesos} onChange={(e) => setPesos(e.target.value)} placeholder="50000" />
+          <MoneyEcho raw={pesos} className="mt-1" />
         </div>
         <div>
           <label className="block text-xs text-muted-foreground">Categoría</label>

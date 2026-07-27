@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { Button } from '@/components/ui/button'
+import { MoneyEcho } from '@/components/ui/money-echo'
 import { bulkRaiseAction } from '~/app/admin/liquidaciones/actions'
 import { efectoEnElMes } from './raise-preview'
 
@@ -81,6 +82,7 @@ export function BulkRaiseForm({ employees }: { employees: RaiseEmployeeVM[] }) {
               placeholder="750000"
               className="num h-9 w-40 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-primary"
             />
+            <MoneyEcho raw={pesos} />
           </div>
           <div className="space-y-1">
             <label htmlFor="raise-desde" className="text-xs font-medium text-muted-foreground">

@@ -51,6 +51,28 @@ export function numeroAR(n: number): string {
   return new Intl.NumberFormat('es-AR').format(n)
 }
 
+/**
+ * Eco de un campo de monto EN PESOS, para mostrar mientras se escribe.
+ * Devuelve null cuando todavía no hay nada que mostrar (vacío o no numérico).
+ *
+ * Por qué existe: 750000 y 75000 se diferencian en UNA tecla y un campo de
+ * número pelado no deja ver cuál de los dos escribiste. Comerse un cero en un
+ * aumento no se nota hasta que sale el recibo.
+ *
+ * Es SOLO presentación: el valor que se guarda lo sigue leyendo cada form del
+ * input tal cual, y la conversión pesos→centavos no pasa por acá.
+ *
+ * Reusa `formatPesos` (el mismo del dominio) a propósito: el monto tiene que
+ * verse igual acá que en el recibo, si no el eco no sirve para comparar.
+ */
+export function ecoPesos(raw: string): string | null {
+  const s = raw.trim()
+  if (!s) return null
+  const n = Number(s)
+  if (!Number.isFinite(n) || n < 0) return null
+  return formatPesos(Math.round(n * 100))
+}
+
 // Reexportados para que las pantallas tengan UN solo lugar de importación de
 // formato. La implementación de plata (centavos → pesos) sigue en el dominio.
 export { formatPesos, monthLabel }
