@@ -4,7 +4,8 @@ import { workDateFromKey } from '@/lib/attendance/timezone'
 import { buildPeriodRoster } from '@/lib/payroll/build-input'
 import { closeBlockedItem, closePeriod, generateBajaItem, reopenPeriod, payPeriod } from '@/lib/payroll/close'
 import { getPeriodDetail } from '@/lib/payroll/queries'
-import { bulkSetSalary } from '@/lib/payroll/salary'
+import { bulkSetSalary, versionSalary } from '@/lib/payroll/salary'
+import type { PrismaClient } from '@/generated/prisma/client'
 
 const ACTOR = 'admin-user-id'
 const LV = 75_000_000n // 750.000
@@ -183,6 +184,105 @@ describe('liquidaciones — orquestación', () => {
 })
 
 /**
+ * Bug real de prod: corregir un sueldo el MISMO día en que se cargó reventaba
+ * con `salary_history_effective_chk` (Postgres 23514), porque el vigente se
+ * cerraba "el día anterior" y le quedaba effectiveTo < effectiveFrom. Es el
+ * caso más común: cargar un monto, ver que está mal y corregirlo. Mismo bug
+ * que ya habíamos arreglado en payroll_config, otra tabla.
+ */
+describe('sueldos — versionado en el borde del mismo día', () => {
+  const vigentes = (id: string) =>
+    prisma.salaryHistory.findMany({ where: { employeeId: id, deletedAt: null }, orderBy: { effectiveFrom: 'asc' } })
+
+  it('corregir un sueldo el mismo día que se cargó PISA el vigente (no revienta)', async () => {
+    const e = await mkEmployee({})
+    const hoy = workDateFromKey('2026-09-05')
+
+    await versionSalary(prisma, e.id, LM, hoy, ACTOR) // carga 500k hoy
+    await versionSalary(prisma, e.id, LV, hoy, ACTOR) // corrige a 750k, MISMO día
+
+    const rows = await vigentes(e.id)
+    expect(rows).toHaveLength(1) // pisado, no versionado: no hay tramo fantasma
+    expect(rows[0].monthlyCents).toBe(LV)
+    expect(rows[0].effectiveTo).toBeNull()
+    expect(rows[0].effectiveFrom.toISOString().slice(0, 10)).toBe('2026-09-05')
+  })
+
+  it('un cambio en un día POSTERIOR sí versiona (el histórico se conserva)', async () => {
+    const e = await mkEmployee({})
+    await versionSalary(prisma, e.id, LM, workDateFromKey('2026-09-05'), ACTOR)
+    await versionSalary(prisma, e.id, LV, workDateFromKey('2026-09-20'), ACTOR)
+
+    const rows = await vigentes(e.id)
+    expect(rows).toHaveLength(2)
+    expect(rows[0].monthlyCents).toBe(LM)
+    expect(rows[0].effectiveTo?.toISOString().slice(0, 10)).toBe('2026-09-19') // cerrado el día anterior
+    expect(rows[1].monthlyCents).toBe(LV)
+    expect(rows[1].effectiveTo).toBeNull()
+  })
+
+  it('carga RETROACTIVA (fecha anterior al vigente) también pisa, sin dejar rangos dados vuelta', async () => {
+    const e = await mkEmployee({})
+    await versionSalary(prisma, e.id, LM, workDateFromKey('2026-09-20'), ACTOR)
+    await versionSalary(prisma, e.id, LV, workDateFromKey('2026-09-05'), ACTOR) // retroactivo
+
+    const rows = await vigentes(e.id)
+    expect(rows).toHaveLength(1)
+    expect(rows[0].monthlyCents).toBe(LV)
+    expect(rows[0].effectiveFrom.toISOString().slice(0, 10)).toBe('2026-09-05')
+  })
+
+  it('el aumento en LOTE es atómico: si el tercero falla, los dos primeros no cambian', async () => {
+    const emps: string[] = []
+    for (let i = 0; i < 4; i++) {
+      const e = await mkEmployee({})
+      await mkSalary(e.id, LM) // todos arrancan en 500k
+      emps.push(e.id)
+    }
+
+    // Simula un fallo de DB al escribir el sueldo del TERCERO.
+    const boomDb = prisma.$extends({
+      query: {
+        salaryHistory: {
+          async create({ args, query }) {
+            if ((args.data as { employeeId?: string }).employeeId === emps[2]) {
+              throw new Error('fallo simulado en insert')
+            }
+            return query(args)
+          },
+        },
+      },
+    }) as unknown as PrismaClient
+
+    await expect(bulkSetSalary(boomDb, emps, LV, workDateFromKey('2026-09-20'), ACTOR)).rejects.toThrow()
+
+    // NINGUNO quedó con el sueldo nuevo, ni siquiera los dos que iban antes.
+    for (const id of emps) {
+      const rows = await vigentes(id)
+      expect(rows).toHaveLength(1)
+      expect(rows[0].monthlyCents).toBe(LM)
+      expect(rows[0].effectiveTo).toBeNull() // tampoco quedó ninguno cerrado a medias
+    }
+    // Y no quedó auditoría de un cambio que no ocurrió.
+    expect(await prisma.auditLog.count({ where: { domain: 'PAYROLL', action: 'salary-change' } })).toBe(0)
+  })
+
+  it('el lote que anda sí aplica a todos, en una sola pasada', async () => {
+    const emps: string[] = []
+    for (let i = 0; i < 3; i++) {
+      const e = await mkEmployee({})
+      await mkSalary(e.id, LM)
+      emps.push(e.id)
+    }
+    expect(await bulkSetSalary(prisma, emps, LV, workDateFromKey('2026-09-20'), ACTOR)).toBe(3)
+    for (const id of emps) {
+      const row = await prisma.salaryHistory.findFirstOrThrow({ where: { employeeId: id, effectiveTo: null, deletedAt: null } })
+      expect(row.monthlyCents).toBe(LV)
+    }
+  })
+})
+
+/**
  * Bug real de prod: un día UNVERIFIED se resolvía DESPUÉS de cerrar el mes y el
  * ítem seguía BLOCKED para siempre, porque la pantalla de un período cerrado
  * mostraba el snapshot congelado y nadie lo volvía a evaluar. Peor: se podía
@@ -192,7 +292,7 @@ describe('liquidaciones — orquestación', () => {
  */
 describe('bloqueado resuelto después del cierre', () => {
   it('deja de bloquear, se cierra INDIVIDUALMENTE y los otros recibos quedan intactos', async () => {
-    const otros = []
+    const otros: string[] = []
     for (let i = 0; i < 7; i++) {
       const e = await mkEmployee({})
       await mkSalary(e.id, LV)
