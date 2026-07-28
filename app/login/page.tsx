@@ -17,12 +17,23 @@ export default function LoginPage() {
     setError(null)
     setLoading(true)
     const { error } = await authClient.signIn.email({ email, password })
-    setLoading(false)
+
     if (error) {
+      // Solo acá se apaga: el formulario vuelve a estar usable para reintentar.
+      setLoading(false)
       setError('Email o contraseña incorrectos.')
       return
     }
-    // La raíz reenvía a cada rol a su shell.
+
+    // ÉXITO: el estado de carga NO se apaga a propósito.
+    //
+    // Validar la contraseña es lo rápido; lo que tarda es lo que viene después
+    // —resolver el rol y renderizar el shell entero—, y son varios segundos.
+    // Apagarlo acá dejaba el botón otra vez en "Ingresar" y habilitado durante
+    // toda esa espera, con la pantalla sin cambiar: se leía como colgado y el
+    // usuario volvía a apretar, disparando un segundo login.
+    //
+    // Queda encendido hasta que la navegación reemplaza esta pantalla.
     router.push('/')
     router.refresh()
   }
@@ -72,8 +83,10 @@ export default function LoginPage() {
             </p>
           )}
 
-          <Button type="submit" size="md" className="w-full" disabled={loading}>
-            {loading ? 'Ingresando…' : 'Ingresar'}
+          {/* Mismo estado que los formularios de plata: rueda + texto + aria-busy,
+              y deshabilitado para que no se pueda apretar dos veces. */}
+          <Button type="submit" size="md" className="w-full" loading={loading} loadingText="Ingresando…">
+            Ingresar
           </Button>
         </form>
 
