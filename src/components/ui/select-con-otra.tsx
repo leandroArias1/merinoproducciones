@@ -21,10 +21,19 @@ import { cn } from '@/lib/utils'
 
 /**
  * Valor centinela de la opción "Otra…". Nunca se guarda: solo destraba el campo
- * de texto. Es un carácter NUL + "otra" para que no pueda chocar con un valor
- * real escrito a mano. Vive acá, en un solo lugar, y no se duplica por form.
+ * de texto. Vive acá, en un solo lugar, y no se duplica por form.
+ *
+ * TIENE QUE SER TEXTO IMPRIMIBLE. La primera versión usaba un carácter NUL para
+ * que no pudiera chocar con un valor real, y salió el tiro por la culata: al
+ * renderizarse en el servidor, el parser HTML del navegador reemplaza el NUL por
+ * U+FFFD, así que el `<option>` llegaba con OTRO valor del que el `<select>`
+ * buscaba. Sin coincidencia, el navegador cae en la PRIMERA opción — o sea que
+ * un cargo viejo aparecía como "Luces" y guardar se lo pisaba.
+ *
+ * No se notó en el form de asignaciones porque ese se monta entero en el
+ * cliente (no pasa por HTML del servidor); el de empleados sí.
  */
-const OTRA = '\0otra'
+const OTRA = '__OTRA__'
 
 export function SelectConOtra({
   id,
@@ -74,6 +83,13 @@ export function SelectConOtra({
   const [libreManual, setLibreManual] = React.useState<boolean | null>(null)
   const libre = libreManual ?? (value !== '' && !esFija(value))
 
+  // Red de seguridad del problema de arriba: si el valor que le pasamos al
+  // <select> no existe entre sus opciones, el navegador elige la primera en
+  // silencio y el usuario ve un dato que no es el suyo. Preferimos un
+  // desplegable en blanco —evidente— a uno que muestra el valor equivocado.
+  const valorSelect = libre ? OTRA : value
+  const valorSeguro = valorSelect === '' || esFija(valorSelect) || valorSelect === OTRA ? valorSelect : ''
+
   // El foco va al texto solo cuando el usuario ELIGE "Otra…". Abrir un
   // formulario con un valor viejo no debe robarle el cursor.
   const [enfocar, setEnfocar] = React.useState(false)
@@ -84,7 +100,7 @@ export function SelectConOtra({
         id={id}
         className={className}
         disabled={disabled}
-        value={libre ? OTRA : value}
+        value={valorSeguro}
         onChange={(e) => {
           const v = e.target.value
           if (v === OTRA) {
