@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { useRouter } from 'next/navigation'
 import { AlertTriangle, CalendarCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SelectConOtra } from '@/components/ui/select-con-otra'
@@ -31,6 +32,7 @@ export function AssignmentForm({
   initial?: AssignmentInitial
   onDone?: () => void
 }) {
+  const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [preview, setPreview] = useState<PreviewResult | null>(null)
@@ -79,6 +81,17 @@ export function AssignmentForm({
         ? await updateAssignmentAction(initial.id, eventId, values)
         : await createAssignmentAction(eventId, values)
       if (!res.ok) return setError(res.error)
+
+      // El refresco NO se deja librado a la respuesta de la action. La action
+      // revalida bien, pero `onDone()` desmonta este formulario en el mismo
+      // tick en que llega esa respuesta: si el desmontaje gana la carrera, el
+      // árbol nuevo se descarta y la asignación recién creada no aparece en la
+      // lista hasta salir y volver a entrar. Depende de la latencia, así que en
+      // una conexión lenta pasa siempre y en una rápida no pasa nunca.
+      //
+      // El costo es un refetch de esta pantalla; el riesgo que evita es que el
+      // usuario crea que no se guardó y cargue a la misma persona dos veces.
+      router.refresh()
       onDone?.()
     })
   }
@@ -129,14 +142,20 @@ export function AssignmentForm({
         Es supervisor de este turno
       </label>
 
-      {/* TRAMPA #1 — a qué día imputa, explícito */}
-      {preview && (
-        <div className="rounded-md bg-secondary px-3 py-2 text-sm">
-          <span className="inline-flex items-center gap-1.5 font-medium [&_svg]:size-4">
-            <CalendarCheck /> Se registra en el {preview.workDateLabel}
-          </span>
-        </div>
-      )}
+      {/* TRAMPA #1 — a qué día imputa, explícito.
+          El hueco se reserva SIEMPRE, aunque todavía no haya nada que mostrar:
+          antes aparecía recién al completar las fechas y empujaba el botón
+          "Asignar" hacia abajo justo cuando el usuario iba a apretarlo, así
+          que el clic se le iba al vacío. */}
+      <div className="min-h-9">
+        {preview && (
+          <div className="rounded-md bg-secondary px-3 py-2 text-sm">
+            <span className="inline-flex items-center gap-1.5 font-medium [&_svg]:size-4">
+              <CalendarCheck /> Se registra en el {preview.workDateLabel}
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* TRAMPA #2 — conflictos: avisan, no bloquean */}
       {preview && (preview.overlaps.length > 0 || preview.leaveType) && (
