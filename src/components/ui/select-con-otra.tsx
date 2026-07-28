@@ -53,10 +53,27 @@ export function SelectConOtra({
   /** Etiqueta accesible del campo de texto (el `label` apunta al select). */
   textoAriaLabel?: string
 }) {
-  const esFija = React.useCallback((v: string) => opciones.includes(v), [opciones])
-  // Un valor que no está en la lista y no está vacío es uno viejo escrito a
-  // mano: se abre en modo libre para poder verlo y editarlo.
-  const [libre, setLibre] = React.useState(() => value !== '' && !esFija(value))
+  const esFija = (v: string) => opciones.includes(v)
+
+  /**
+   * Si estamos en modo libre se DERIVA del valor mientras el usuario no toque
+   * el desplegable, y recién ahí pasa a mandar su elección.
+   *
+   * No alcanza con un `useState` inicializado del valor: el inicializador corre
+   * una sola vez, en el primer render, y el formulario puede entregar el valor
+   * un render después. Cuando eso pasaba, un cargo viejo como "Supervisión"
+   * quedaba en modo NO libre, el `<select>` no encontraba una opción que
+   * matcheara y caía en la primera de la lista — o sea que guardar le cambiaba
+   * el cargo al empleado sin avisar. Derivarlo lo hace inmune a ese orden.
+   *
+   * El estado manual sigue siendo necesario para dos casos que el valor solo no
+   * distingue: recién elegí "Otra…" y todavía no escribí nada (valor vacío pero
+   * modo libre), y escribí en "Otra…" algo que coincide con una opción fija
+   * (que si no, cerraría el campo a mitad de la palabra).
+   */
+  const [libreManual, setLibreManual] = React.useState<boolean | null>(null)
+  const libre = libreManual ?? (value !== '' && !esFija(value))
+
   // El foco va al texto solo cuando el usuario ELIGE "Otra…". Abrir un
   // formulario con un valor viejo no debe robarle el cursor.
   const [enfocar, setEnfocar] = React.useState(false)
@@ -71,13 +88,13 @@ export function SelectConOtra({
         onChange={(e) => {
           const v = e.target.value
           if (v === OTRA) {
-            setLibre(true)
+            setLibreManual(true)
             setEnfocar(true)
             // Se vacía SOLO al elegir "Otra…" a propósito: así un valor viejo
             // abre con su texto y no se pierde solo.
             onChange('')
           } else {
-            setLibre(false)
+            setLibreManual(false)
             onChange(v)
           }
         }}
