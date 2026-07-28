@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { ShieldOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { SelectConOtra } from '@/components/ui/select-con-otra'
 import {
   employeeSchema,
   type EmployeeFormValues,
@@ -25,6 +26,13 @@ const ROLE_LABELS: Record<AppRole, string> = {
   EMPLOYEE: 'Empleado',
 }
 const ROLES: AppRole[] = ['ADMIN', 'SUPERVISOR', 'EMPLOYEE']
+
+/**
+ * Cargos habituales. Vive acá y no en `src/lib/employees/schema.ts` a propósito:
+ * el schema sigue aceptando texto libre (hay legajos viejos con el cargo escrito
+ * a mano y está la opción "Otra…"). Esto es sólo qué se ofrece en la pantalla.
+ */
+const CARGOS = ['Luces', 'Sonido', 'Pantalla', 'Transporte'] as const
 
 export interface EmployeeInitial extends EmployeeFormValues {
   id: string
@@ -58,10 +66,11 @@ export function EmployeeForm({
   const [error, setError] = useState<string | null>(null)
   const roleInicial: AppRole = access?.role ?? 'EMPLOYEE'
   const [role, setRole] = useState<AppRole>(roleInicial)
-
   const {
     register,
     handleSubmit,
+    watch,
+    setValue,
     formState: { errors },
   } = useForm<EmployeeFormValues>({
     resolver: zodResolver(employeeSchema), // MISMO schema que el servidor
@@ -78,6 +87,10 @@ export function EmployeeForm({
       active: true,
     },
   })
+
+  // El cargo se elige de una lista (ver SelectConOtra): "Sonido" siempre es
+  // "Sonido" y no "sonido", que quedaban como cargos distintos en los listados.
+  const position = watch('position') ?? ''
 
   function onSubmit(values: EmployeeFormValues) {
     setError(null)
@@ -120,8 +133,17 @@ export function EmployeeForm({
         <Field label="Documento (DNI/CUIL)" error={errors.documentId?.message}>
           <input {...register('documentId')} className={inputCls} />
         </Field>
-        <Field label="Cargo" error={errors.position?.message}>
-          <input {...register('position')} className={inputCls} placeholder="Sonido, montaje…" />
+        <Field label="Cargo" error={errors.position?.message} htmlFor="cargo">
+          <SelectConOtra
+            id="cargo"
+            className={inputCls}
+            opciones={CARGOS}
+            value={position}
+            onChange={(v) => setValue('position', v)}
+            vacioLabel="Sin cargo"
+            placeholder="Escribí el cargo"
+            textoAriaLabel="Cargo personalizado"
+          />
         </Field>
         <Field label="Email" error={errors.email?.message}>
           <input {...register('email')} className={inputCls} type="email" />
@@ -221,10 +243,12 @@ export function EmployeeForm({
   )
 }
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function Field({ label, error, children, htmlFor }: { label: string; error?: string; children: React.ReactNode; htmlFor?: string }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-sm font-medium">{label}</label>
+      <label className="text-sm font-medium" htmlFor={htmlFor}>
+        {label}
+      </label>
       {children}
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>
