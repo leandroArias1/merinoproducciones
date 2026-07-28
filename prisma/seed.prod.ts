@@ -1,10 +1,10 @@
 import { prisma } from '@/lib/db'
-import { seedCategories, seedHolidays, seedAdmin } from './seed-shared'
+import { seedCategories, seedHolidays, seedAdmin, FERIADOS } from './seed-shared'
 
 /**
  * Seed de PRODUCCIÓN. SOLO datos reales, idempotente:
  *   · las 2 EmployeeCategory con sus plantillas
- *   · los 16 feriados nacionales 2026
+ *   · los feriados nacionales cargados (2026 y 2027)
  *   · UN usuario ADMIN, con credenciales leídas de ADMIN_EMAIL / ADMIN_PASSWORD.
  *
  * SIN datos falsos, SIN credenciales hardcodeadas. Si faltan las variables de
@@ -27,7 +27,7 @@ async function main() {
   await seedHolidays(prisma)
   await seedAdmin(prisma, { email, password, name: process.env.ADMIN_NAME || 'Administrador' })
 
-  console.log(`Seed de PRODUCCIÓN OK: 2 categorías, 16 feriados, admin ${email}.`)
+  console.log(`Seed de PRODUCCIÓN OK: 2 categorías, ${FERIADOS.length} feriados, admin ${email}.`)
 }
 
 main()
