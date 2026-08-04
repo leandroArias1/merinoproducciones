@@ -21,6 +21,8 @@ function emp(over: Partial<EmployeeInput>): EmployeeInput {
     documentId: '30000001',
     email: '',
     phone: '',
+    birthDate: '',
+    alias: '',
     position: '',
     employmentType: 'MONTHLY',
     hireDate: '',

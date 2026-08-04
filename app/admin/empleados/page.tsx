@@ -3,7 +3,7 @@ import { Plus, Upload, Search } from 'lucide-react'
 import { prisma } from '@/lib/db'
 import { listEmployees, type EmployeeStatusFilter } from '@/lib/employees/employees'
 import { listCategories } from '@/lib/employees/categories'
-import { EMPLOYMENT_TYPE_LABELS } from '@/lib/employees/schema'
+import { EMPLOYMENT_TYPE_LABELS, EMPLOYMENT_TYPES } from '@/lib/employees/schema'
 import { Button } from '@/components/ui/button'
 import { FilterForm } from '@/components/shell/filter-form'
 import { FilterChips } from '@/components/shell/filter-chips'
@@ -26,17 +26,19 @@ const ESTADO_NOUN: Record<EmployeeStatusFilter, string> = {
 export default async function EmpleadosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ page?: string; categoria?: string; estado?: string; q?: string }>
+  searchParams: Promise<{ page?: string; categoria?: string; contrato?: string; estado?: string; q?: string }>
 }) {
   const sp = await searchParams
   const page = Math.max(1, Number(sp.page) || 1)
   const categoria = sp.categoria || undefined
+  // Se valida contra la lista: un valor cualquiera en la URL no llega a Prisma.
+  const contrato = (EMPLOYMENT_TYPES as readonly string[]).includes(sp.contrato ?? '') ? sp.contrato : undefined
   const estado = (['active', 'inactive'].includes(sp.estado ?? '') ? sp.estado : 'all') as EmployeeStatusFilter
   const q = sp.q?.trim() || undefined
 
   const [categories, { rows, total }] = await Promise.all([
     listCategories(prisma),
-    listEmployees(prisma, { page, pageSize: PAGE_SIZE, categoryId: categoria, status: estado, search: q }),
+    listEmployees(prisma, { page, pageSize: PAGE_SIZE, categoryId: categoria, employmentType: contrato, status: estado, search: q }),
   ])
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE))
 
@@ -90,6 +92,23 @@ export default async function EmpleadosPage({
               </option>
             ))}
           </select>
+          {/* Contrato: separa mensuales de freelance, que era el pedido. Va con
+              los cuatro tipos y no con dos chips "Mensual/Freelance", porque si
+              alguien está cargado como Jornal o Por hora quedaría invisible en
+              los dos filtros y parecería que no existe. */}
+          <select
+            name="contrato"
+            defaultValue={contrato ?? ''}
+            aria-label="Filtrar por tipo de contratación"
+            className="h-9 rounded-md border bg-background px-3 text-sm outline-none focus-visible:border-primary"
+          >
+            <option value="">Todos los contratos</option>
+            {EMPLOYMENT_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {EMPLOYMENT_TYPE_LABELS[t]}
+              </option>
+            ))}
+          </select>
           {estado !== 'all' && <input type="hidden" name="estado" value={estado} />}
           <Button type="submit" variant="secondary" size="sm">
             Buscar
@@ -99,9 +118,9 @@ export default async function EmpleadosPage({
         <FilterChips
           active={estado}
           chips={[
-            { key: 'all', label: 'Todos', href: `/admin/empleados${buildQuery({ categoria, q })}` },
-            { key: 'active', label: 'Activos', href: `/admin/empleados${buildQuery({ categoria, q, estado: 'active' })}` },
-            { key: 'inactive', label: 'Inactivos', href: `/admin/empleados${buildQuery({ categoria, q, estado: 'inactive' })}` },
+            { key: 'all', label: 'Todos', href: `/admin/empleados${buildQuery({ categoria, contrato, q })}` },
+            { key: 'active', label: 'Activos', href: `/admin/empleados${buildQuery({ categoria, contrato, q, estado: 'active' })}` },
+            { key: 'inactive', label: 'Inactivos', href: `/admin/empleados${buildQuery({ categoria, contrato, q, estado: 'inactive' })}` },
           ]}
         />
       </div>
@@ -161,10 +180,10 @@ export default async function EmpleadosPage({
             Página {page} de {pages}
           </span>
           <div className="flex gap-2">
-            <PageLink disabled={page <= 1} href={`/admin/empleados${buildQuery({ categoria, estado, q, page: String(page - 1) })}`}>
+            <PageLink disabled={page <= 1} href={`/admin/empleados${buildQuery({ categoria, contrato, estado, q, page: String(page - 1) })}`}>
               Anterior
             </PageLink>
-            <PageLink disabled={page >= pages} href={`/admin/empleados${buildQuery({ categoria, estado, q, page: String(page + 1) })}`}>
+            <PageLink disabled={page >= pages} href={`/admin/empleados${buildQuery({ categoria, contrato, estado, q, page: String(page + 1) })}`}>
               Siguiente
             </PageLink>
           </div>

@@ -13,8 +13,9 @@ function todayWorkDate(): Date {
   return workDateFromKey(DateTime.now().setZone(BA_ZONE).toISODate() as string)
 }
 
-function hireDateToWorkDate(hireDate: string): Date | null {
-  return hireDate ? workDateFromKey(hireDate) : null
+/** 'YYYY-MM-DD' → día de negocio. Vacío = sin fecha. Sirve para ingreso y nacimiento. */
+function dateKeyToWorkDate(key: string): Date | null {
+  return key ? workDateFromKey(key) : null
 }
 
 /** Categoría que determina el horario EFECTIVO: sin actividad no hay horario. */
@@ -78,9 +79,11 @@ function baseData(input: EmployeeInput) {
     documentId: input.documentId,
     email: input.email || null,
     phone: input.phone || null,
+    birthDate: dateKeyToWorkDate(input.birthDate),
+    alias: input.alias || null,
     position: input.position || null,
     employmentType: input.employmentType,
-    hireDate: hireDateToWorkDate(input.hireDate),
+    hireDate: dateKeyToWorkDate(input.hireDate),
     active: input.active,
   }
 }
@@ -98,7 +101,7 @@ export async function insertEmployeeTx(
   effectiveDate?: Date,
 ): Promise<string> {
   const categoryId = input.categoryId || null
-  const eff = effectiveDate ?? hireDateToWorkDate(input.hireDate) ?? todayWorkDate()
+  const eff = effectiveDate ?? dateKeyToWorkDate(input.hireDate) ?? todayWorkDate()
 
   const emp = await tx.employee.create({ data: { ...baseData(input), categoryId }, select: { id: true } })
   // La categoría de scheduling es null si el empleado nace inactivo: sin
@@ -221,13 +224,15 @@ export interface ListEmployeesParams {
   page: number
   pageSize: number
   categoryId?: string
+  /** Tipo de contratación exacto (MONTHLY, PER_EVENT…). Sin valor = todos. */
+  employmentType?: string
   status?: EmployeeStatusFilter
   /** Texto libre: busca en nombre, apellido y documento (server-side). */
   search?: string
 }
 
 export async function listEmployees(db: Db, params: ListEmployeesParams) {
-  const { page, pageSize, categoryId, status = 'all', search } = params
+  const { page, pageSize, categoryId, employmentType, status = 'all', search } = params
   const q = search?.trim()
 
   // Búsqueda acento-INSENSIBLE (sql/08): resuelvo los IDs que matchean con
@@ -251,6 +256,7 @@ export async function listEmployees(db: Db, params: ListEmployeesParams) {
   const where = {
     deletedAt: null, // siempre: las bajas no aparecen
     ...(categoryId ? { categoryId } : {}),
+    ...(employmentType ? { employmentType: employmentType as never } : {}),
     ...(status === 'active' ? { active: true } : status === 'inactive' ? { active: false } : {}),
     ...searchFilter,
   }

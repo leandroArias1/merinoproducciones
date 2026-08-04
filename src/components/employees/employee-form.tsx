@@ -80,6 +80,8 @@ export function EmployeeForm({
       documentId: '',
       email: '',
       phone: '',
+      birthDate: '',
+      alias: '',
       position: '',
       employmentType: 'MONTHLY',
       hireDate: '',
@@ -150,6 +152,12 @@ export function EmployeeForm({
         </Field>
         <Field label="Teléfono" error={errors.phone?.message}>
           <input {...register('phone')} className={inputCls} />
+        </Field>
+        <Field label="Fecha de nacimiento" error={errors.birthDate?.message}>
+          <input {...register('birthDate')} className={inputCls} type="date" />
+        </Field>
+        <Field label="Alias o CBU" error={errors.alias?.message}>
+          <input {...register('alias')} className={inputCls} placeholder="juan.perez.mp o 22 dígitos" />
         </Field>
         <Field label="Contratación" error={errors.employmentType?.message}>
           <select {...register('employmentType')} className={inputCls}>

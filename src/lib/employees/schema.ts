@@ -16,6 +16,30 @@ export function todayInBA(): string {
 /** DNI/CUIL argentino: solo dígitos, 7 u 8. Reutilizable (form + importador CSV). */
 export const DOCUMENT_ID_RE = /^\d{7,8}$/
 
+/**
+ * Alias bancario (6-20: letras, números, punto y guion) o CBU/CVU (22 dígitos).
+ *
+ * Se valida SOLO lo que se sabe con certeza del formato. Deliberadamente NO se
+ * exige que empiece o termine con letra, ni que tenga al menos una letra, ni se
+ * normaliza a minúsculas: son reglas de las que no tengo confirmación, y un
+ * alias legítimo rechazado por una regla inventada es peor que uno dudoso que
+ * el banco va a rechazar igual — el usuario no entendería por qué no puede
+ * cargar un dato correcto.
+ *
+ * Tampoco se transforma lo que se escribe: es un identificador de pago, se
+ * guarda tal cual (solo se recortan espacios de los bordes).
+ */
+export const ALIAS_RE = /^[A-Za-z0-9.-]{6,20}$/
+export const CBU_RE = /^\d{22}$/
+export const ALIAS_MSG =
+  'Alias inválido: 6 a 20 caracteres (letras, números, punto y guion), o un CBU/CVU de 22 dígitos.'
+
+/** 'YYYY-MM-DD' de hace N años, para acotar la fecha de nacimiento. */
+function hoyMenosAnios(n: number): string {
+  const hoy = todayInBA()
+  return `${Number(hoy.slice(0, 4)) - n}${hoy.slice(4)}`
+}
+
 // dayOfWeek 0=domingo..6=sábado. Minutos desde 00:00 hora BA.
 export const DAY_LABELS = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'] as const
 
@@ -24,7 +48,9 @@ export const EMPLOYMENT_TYPE_LABELS: Record<(typeof EMPLOYMENT_TYPES)[number], s
   MONTHLY: 'Mensual',
   DAILY: 'Jornal',
   HOURLY: 'Por hora',
-  PER_EVENT: 'Por evento',
+  // El valor guardado sigue siendo PER_EVENT: solo cambia cómo se lee. El
+  // schema ya lo describía como "freelance / cachet por evento".
+  PER_EVENT: 'Freelance',
 }
 
 const tramoSchema = z
@@ -68,6 +94,22 @@ export const employeeSchema = z.object({
     .optional()
     .default(''),
   phone: z.string().trim().max(30).optional().default(''),
+  // Bloquea en vez de avisar: una fecha de nacimiento fuera de rango siempre es
+  // un error de carga (típico: el año mal tipeado), nunca un caso real.
+  birthDate: z
+    .string()
+    .refine((v) => v === '' || /^\d{4}-\d{2}-\d{2}$/.test(v), 'Fecha inválida')
+    .refine((v) => v === '' || v <= todayInBA(), 'La fecha de nacimiento no puede ser futura.')
+    .refine((v) => v === '' || v <= hoyMenosAnios(16), 'El empleado tiene que tener al menos 16 años.')
+    .refine((v) => v === '' || v >= hoyMenosAnios(100), 'Revisá el año: esa fecha da más de 100 años.')
+    .optional()
+    .default(''),
+  alias: z
+    .string()
+    .trim()
+    .refine((v) => v === '' || ALIAS_RE.test(v) || CBU_RE.test(v), ALIAS_MSG)
+    .optional()
+    .default(''),
   position: z.string().trim().max(60).optional().default(''),
   employmentType: z.enum(EMPLOYMENT_TYPES),
   hireDate: z

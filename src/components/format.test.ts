@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { fechaAR, fechaCortaAR, fechaARDesdeClave, fechaLargaAR, numeroAR, ecoPesos } from './format'
+import { fechaAR, fechaCortaAR, fechaARDesdeClave, fechaLargaAR, numeroAR, ecoPesos, centavosPelados } from './format'
 
 /**
  * El borde importante es la ZONA: los días de negocio son `@db.Date` y Prisma
@@ -78,5 +78,32 @@ describe('ecoPesos — lo que se ve mientras se escribe un monto', () => {
     const raw = '750000'
     expect(typeof ecoPesos(raw)).toBe('string')
     expect(raw).toBe('750000')
+  })
+})
+
+/**
+ * Lo que se copia al homebanking NO es lo que se ve. En pantalla va "$ 810.000";
+ * si eso se pegara en el formulario del banco, lo rechaza por el símbolo y los
+ * puntos — y sacarlos a mano es justo lo que el botón de copiar viene a evitar.
+ */
+describe('centavosPelados — el monto como lo espera el homebanking', () => {
+  it('sin símbolo ni separadores de miles', () => {
+    expect(centavosPelados(81_000_000n)).toBe('810000')
+    expect(centavosPelados(75_000_00n)).toBe('75000')
+  })
+
+  it('los centavos solo aparecen si los hay (un prorrateo puede dejarlos)', () => {
+    expect(centavosPelados(81_000_050n)).toBe('810000.50')
+    expect(centavosPelados(1_01n)).toBe('1.01')
+    expect(centavosPelados(1_10n)).toBe('1.10') // el cero final no se pierde
+  })
+
+  it('cero', () => {
+    expect(centavosPelados(0n)).toBe('0')
+  })
+
+  it('nunca devuelve notación científica ni pierde precisión en montos grandes', () => {
+    // Con Number esto se rompería; con BigInt no.
+    expect(centavosPelados(9_007_199_254_740_993_00n)).toBe('9007199254740993')
   })
 })

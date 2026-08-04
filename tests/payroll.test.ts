@@ -283,6 +283,52 @@ describe('sueldos — versionado en el borde del mismo día', () => {
 })
 
 /**
+ * El alias bancario viaja por `queries.ts` y `build-input.ts` solo para
+ * mostrarlo al pagar. Es un `select` más, no entra en `computePayrollItem` — y
+ * esto lo congela: si alguna vez alguien lo metiera en el cálculo, o si traerlo
+ * cambiara la forma en que se arma el roster, estos números se moverían.
+ */
+describe('el alias no toca la liquidación', () => {
+  it('un período cerrado da los mismos números con y sin alias cargado', async () => {
+    const sinAlias = await mkEmployee({})
+    const conAlias = await mkEmployee({})
+    await mkSalary(sinAlias.id, LV)
+    await mkSalary(conAlias.id, LV)
+    await prisma.employee.update({ where: { id: conAlias.id }, data: { alias: 'test.alias.mp' } })
+    await mkAtt(conAlias.id, '2026-09-10', 'ABSENT')
+    await mkAtt(sinAlias.id, '2026-09-10', 'ABSENT')
+
+    await closePeriod(prisma, Y, M, ACTOR)
+
+    const detail = await getPeriodDetail(prisma, Y, M)
+    const a = detail.rows.find((r) => r.employeeId === sinAlias.id)!
+    const b = detail.rows.find((r) => r.employeeId === conAlias.id)!
+
+    // Mismo sueldo, misma falta → mismo neto, tenga alias o no.
+    expect(a.netCents).toBe(LV - DED)
+    expect(b.netCents).toBe(a.netCents)
+    expect(b.baseCents).toBe(a.baseCents)
+    expect(b.deductionCents).toBe(a.deductionCents)
+    expect(b.absentDays).toBe(a.absentDays)
+
+    // Y el alias llega para mostrarlo, sin inventar nada para el que no tiene.
+    expect(b.alias).toBe('test.alias.mp')
+    expect(a.alias).toBeNull()
+  })
+
+  it('el roster expone el alias sin meterlo en el input del motor', async () => {
+    const e = await mkEmployee({})
+    await mkSalary(e.id, LV)
+    await prisma.employee.update({ where: { id: e.id }, data: { alias: '0000003100010000000001' } })
+
+    const roster = await buildPeriodRoster(prisma, Y, M)
+    expect(roster[0].alias).toBe('0000003100010000000001')
+    // `input` es lo único que ve computePayrollItem: el alias NO está ahí.
+    expect(Object.keys(roster[0].input)).not.toContain('alias')
+  })
+})
+
+/**
  * Bug real de prod: un día UNVERIFIED se resolvía DESPUÉS de cerrar el mes y el
  * ítem seguía BLOCKED para siempre, porque la pantalla de un período cerrado
  * mostraba el snapshot congelado y nadie lo volvía a evaluar. Peor: se podía

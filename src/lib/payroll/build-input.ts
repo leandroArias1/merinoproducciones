@@ -90,6 +90,9 @@ export function buildSegments(versions: SalaryVersion[], win: { startKey: string
 export interface EmployeePayroll {
   employeeId: string
   employeeName: string
+  /** Alias bancario/CBU. Solo se transporta para mostrarlo al pagar: NO entra
+   *  en ningún cálculo — `computePayrollItem` ni lo ve. */
+  alias: string | null
   input: PayrollInput
   /**
    * PRIMER día sin resolver que lo bloquea ('YYYY-MM-DD'), o null si no hay.
@@ -123,7 +126,7 @@ export async function buildPeriodRoster(db: Db, year: number, month: number, opt
         { OR: [{ deletedAt: null }, { deletedAt: { gte: from } }] },
       ],
     },
-    select: { id: true, firstName: true, lastName: true, hireDate: true, deletedAt: true, category: { select: { name: true } } },
+    select: { id: true, firstName: true, lastName: true, alias: true, hireDate: true, deletedAt: true, category: { select: { name: true } } },
   })
   if (employees.length === 0) return []
   const empIds = employees.map((e) => e.id)
@@ -168,6 +171,7 @@ export async function buildPeriodRoster(db: Db, year: number, month: number, opt
     result.push({
       employeeId: e.id,
       employeeName: `${e.lastName}, ${e.firstName}`,
+      alias: e.alias,
       input: { daysInMonth: m.daysInMonth, segments, absentDays, deductionPerAbsentCents: deduction, blocked: blockingDays.length > 0 },
       blockingDayKey: blockingDays[0] ?? null,
     })

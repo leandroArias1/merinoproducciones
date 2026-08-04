@@ -38,6 +38,8 @@ export interface PeriodItemRow {
   itemId: string | null
   /** Día que lo bloquea ('YYYY-MM-DD'), para linkear al día y no a una lista vacía. */
   blockingDayKey: string | null
+  /** Alias bancario/CBU, para copiarlo al pagar sin abrir la ficha de cada uno. */
+  alias: string | null
 }
 
 export interface PeriodDetail {
@@ -79,7 +81,7 @@ export async function getPeriodDetail(db: Db, year: number, month: number): Prom
           deductionCents: true,
           netCents: true,
           absentDays: true,
-          employee: { select: { firstName: true, lastName: true } },
+          employee: { select: { firstName: true, lastName: true, alias: true } },
         },
       })
     : []
@@ -97,19 +99,21 @@ export async function getPeriodDetail(db: Db, year: number, month: number): Prom
 
     for (const i of existing) {
       const employeeName = `${i.employee.lastName}, ${i.employee.firstName}`
+      const alias = i.employee.alias
       const emp = rosterById.get(i.employeeId)
       if (emp) {
         const r = computePayrollItem(emp.input)
         rows.push(
           r.status === 'BLOCKED'
-            ? { employeeId: i.employeeId, employeeName, baseCents: 0n, deductionCents: 0n, netCents: 0n, absentDays: emp.input.absentDays, status: 'BLOCKED', itemId: i.id, blockingDayKey: emp.blockingDayKey }
-            : { employeeId: i.employeeId, employeeName, baseCents: r.baseCents, deductionCents: r.deductionCents, netCents: r.netCents, absentDays: r.absentDays, status: 'READY', itemId: i.id, blockingDayKey: null },
+            ? { employeeId: i.employeeId, employeeName, alias, baseCents: 0n, deductionCents: 0n, netCents: 0n, absentDays: emp.input.absentDays, status: 'BLOCKED', itemId: i.id, blockingDayKey: emp.blockingDayKey }
+            : { employeeId: i.employeeId, employeeName, alias, baseCents: r.baseCents, deductionCents: r.deductionCents, netCents: r.netCents, absentDays: r.absentDays, status: 'READY', itemId: i.id, blockingDayKey: null },
         )
         continue
       }
       rows.push({
         employeeId: i.employeeId,
         employeeName,
+        alias,
         baseCents: i.baseCents,
         deductionCents: i.deductionCents,
         netCents: i.netCents,
@@ -127,6 +131,7 @@ export async function getPeriodDetail(db: Db, year: number, month: number): Prom
         rows.push({
           employeeId: emp.employeeId,
           employeeName: emp.employeeName,
+          alias: emp.alias,
           baseCents: ex.baseCents,
           deductionCents: ex.deductionCents,
           netCents: ex.netCents,
@@ -139,9 +144,9 @@ export async function getPeriodDetail(db: Db, year: number, month: number): Prom
       }
       const r = computePayrollItem(emp.input)
       if (r.status === 'BLOCKED') {
-        rows.push({ employeeId: emp.employeeId, employeeName: emp.employeeName, baseCents: 0n, deductionCents: 0n, netCents: 0n, absentDays: emp.input.absentDays, status: 'BLOCKED', itemId: ex?.id ?? null, blockingDayKey: emp.blockingDayKey })
+        rows.push({ employeeId: emp.employeeId, employeeName: emp.employeeName, alias: emp.alias, baseCents: 0n, deductionCents: 0n, netCents: 0n, absentDays: emp.input.absentDays, status: 'BLOCKED', itemId: ex?.id ?? null, blockingDayKey: emp.blockingDayKey })
       } else {
-        rows.push({ employeeId: emp.employeeId, employeeName: emp.employeeName, baseCents: r.baseCents, deductionCents: r.deductionCents, netCents: r.netCents, absentDays: r.absentDays, status: 'READY', itemId: ex?.id ?? null, blockingDayKey: null })
+        rows.push({ employeeId: emp.employeeId, employeeName: emp.employeeName, alias: emp.alias, baseCents: r.baseCents, deductionCents: r.deductionCents, netCents: r.netCents, absentDays: r.absentDays, status: 'READY', itemId: ex?.id ?? null, blockingDayKey: null })
       }
     }
   }

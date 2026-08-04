@@ -28,6 +28,8 @@ export default async function EmpleadoDetallePage({ params }: { params: Promise<
     ['Documento', e.documentId],
     ['Email', e.email ?? '—'],
     ['Teléfono', e.phone ?? '—'],
+    ['Nacimiento', fmtDate(e.birthDate)],
+    ['Alias o CBU', e.alias ?? '—'],
     ['Cargo', e.position ?? '—'],
     ['Contratación', EMPLOYMENT_TYPE_LABELS[e.employmentType]],
     ['Ingreso', fmtDate(e.hireDate)],

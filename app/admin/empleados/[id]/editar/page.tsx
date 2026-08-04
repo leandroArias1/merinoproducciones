@@ -34,6 +34,8 @@ export default async function EditarEmpleadoPage({ params }: { params: Promise<{
           documentId: e.documentId,
           email: e.email ?? '',
           phone: e.phone ?? '',
+          birthDate: e.birthDate ? e.birthDate.toISOString().slice(0, 10) : '',
+          alias: e.alias ?? '',
           position: e.position ?? '',
           employmentType: e.employmentType,
           hireDate: e.hireDate ? e.hireDate.toISOString().slice(0, 10) : '',

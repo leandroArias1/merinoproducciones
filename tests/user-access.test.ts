@@ -17,7 +17,7 @@ async function clean() {
 async function makeEmployee(documentId = '40100100') {
   return createEmployee(
     prisma,
-    { firstName: 'Ana', lastName: 'Test', documentId, email: '', phone: '', position: '', employmentType: 'MONTHLY', hireDate: '', categoryId: '', active: true },
+    { firstName: 'Ana', lastName: 'Test', documentId, email: '', phone: '', birthDate: '', alias: '', position: '', employmentType: 'MONTHLY', hireDate: '', categoryId: '', active: true },
     ACTOR,
   )
 }
