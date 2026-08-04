@@ -51,7 +51,7 @@ describe('importador CSV', () => {
     // Empleado activo con el DNI 30000001 (para el caso "ya registrado").
     await createEmployee(
       prisma,
-      { firstName: 'X', lastName: 'Y', documentId: '30000001', email: '', phone: '', position: '', employmentType: 'MONTHLY', hireDate: '', categoryId: '', active: true },
+      { firstName: 'X', lastName: 'Y', documentId: '30000001', email: '', phone: '', birthDate: '', alias: '', position: '', employmentType: 'MONTHLY', hireDate: '', categoryId: '', active: true },
       ACTOR,
     )
     const antes = await prisma.employee.count({ where: { deletedAt: null } })
@@ -85,7 +85,7 @@ describe('importador CSV', () => {
     })
     await createEmployee(
       prisma,
-      { firstName: 'X', lastName: 'Y', documentId: '30000001', email: '', phone: '', position: '', employmentType: 'MONTHLY', hireDate: '', categoryId: '', active: true },
+      { firstName: 'X', lastName: 'Y', documentId: '30000001', email: '', phone: '', birthDate: '', alias: '', position: '', employmentType: 'MONTHLY', hireDate: '', categoryId: '', active: true },
       ACTOR,
     )
 

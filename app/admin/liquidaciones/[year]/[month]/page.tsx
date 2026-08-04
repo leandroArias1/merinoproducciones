@@ -4,6 +4,8 @@ import { AlertTriangle, FileText } from 'lucide-react'
 import { prisma } from '@/lib/db'
 import { getPeriodDetail, type ItemStatus } from '@/lib/payroll/queries'
 import { formatPesos, monthLabel } from '@/lib/payroll/format'
+import { centavosPelados } from '@/components/format'
+import { CopyButton } from '@/components/ui/copy-button'
 import { StatusBadge } from '@/components/events/status-badge'
 import { PeriodActions } from '@/components/payroll/period-actions'
 import { CloseItemButton } from '@/components/payroll/close-item-button'
@@ -113,7 +115,21 @@ export default async function PeriodoPage({ params }: { params: Promise<{ year: 
             <tbody className="divide-y">
               {detail.rows.map((r) => (
                 <tr key={r.employeeId} className="hover:bg-secondary/50">
-                  <td className="px-4 py-2.5 font-medium">{r.employeeName}</td>
+                  {/* El alias va bajo el nombre y no como columna: es texto de
+                      ancho variable y una octava columna aprieta los números.
+                      Acá se lee "esta persona cobra $X y este es su alias" sin
+                      abrir la ficha de cada uno para pagar. */}
+                  <td className="px-4 py-2.5">
+                    <div className="font-medium">{r.employeeName}</div>
+                    {r.alias ? (
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <span className="select-all font-mono text-xs text-muted-foreground">{r.alias}</span>
+                        <CopyButton value={r.alias} label={`el alias de ${r.employeeName}`} />
+                      </div>
+                    ) : (
+                      <div className="mt-0.5 text-xs text-muted-foreground/70">sin alias</div>
+                    )}
+                  </td>
                   {r.status === 'BLOCKED' ? (
                     <td className="px-4 py-2.5 text-right text-xs text-muted-foreground" colSpan={4}>
                       pendiente de resolver
@@ -125,7 +141,14 @@ export default async function PeriodoPage({ params }: { params: Promise<{ year: 
                       <td className="px-4 py-2.5 text-right tabular-nums text-muted-foreground">
                         {r.deductionCents > 0n ? `−${formatPesos(r.deductionCents)}` : '—'}
                       </td>
-                      <td className="px-4 py-2.5 text-right font-semibold tabular-nums">{formatPesos(r.netCents)}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span className="font-semibold tabular-nums">{formatPesos(r.netCents)}</span>
+                          {r.netCents > 0n && (
+                            <CopyButton value={centavosPelados(r.netCents)} label={`el monto de ${r.employeeName}`} />
+                          )}
+                        </div>
+                      </td>
                     </>
                   )}
                   <td className="px-4 py-2.5">

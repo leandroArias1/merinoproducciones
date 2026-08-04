@@ -244,6 +244,11 @@ async function classify(db: Db, csvText: string): Promise<{ headerError?: string
       documentId: values.documentId,
       email: '',
       phone: values.phone,
+      // El CSV mantiene sus 7 columnas de siempre: no se le suman nacimiento ni
+      // alias. Cambiar ese formato invalidaría las planillas que el usuario ya
+      // sabe armar; esos dos datos se cargan desde la pantalla.
+      birthDate: '',
+      alias: '',
       position: values.position,
       employmentType: 'MONTHLY', // el CSV no trae tipo → default
       hireDate,

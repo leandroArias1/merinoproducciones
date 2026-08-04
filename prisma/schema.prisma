@@ -185,6 +185,8 @@ model Employee {
   documentId     String // DNI/CUIL — UNIQUE parcial en sql/01_indexes.sql
   email          String?
   phone          String?
+  birthDate      DateTime?      @db.Date // día puro, sin hora ni zona
+  alias          String? // alias bancario o CBU/CVU: DÓNDE se le transfiere
   photoUrl       String?
   position       String? // cargo general (sonido, iluminación, logística…)
   employmentType EmploymentType @default(MONTHLY)

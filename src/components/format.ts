@@ -65,6 +65,23 @@ export function numeroAR(n: number): string {
  * Reusa `formatPesos` (el mismo del dominio) a propósito: el monto tiene que
  * verse igual acá que en el recibo, si no el eco no sirve para comparar.
  */
+/**
+ * Centavos → pesos PELADOS, para copiar al homebanking: "810000", no "$ 810.000".
+ *
+ * El símbolo y los separadores de miles hacen que el homebanking rechace el
+ * pegado, y sacarlos a mano es exactamente lo que el botón de copiar viene a
+ * evitar. Los centavos solo aparecen si los hay (un prorrateo puede dejarlos):
+ * en ese caso van con punto decimal, que es lo que esos formularios esperan.
+ */
+export function centavosPelados(cents: bigint): string {
+  const negativo = cents < 0n
+  const abs = negativo ? -cents : cents
+  const enteros = abs / 100n
+  const resto = abs % 100n
+  const cuerpo = resto === 0n ? `${enteros}` : `${enteros}.${resto.toString().padStart(2, '0')}`
+  return negativo ? `-${cuerpo}` : cuerpo
+}
+
 export function ecoPesos(raw: string): string | null {
   const s = raw.trim()
   if (!s) return null
